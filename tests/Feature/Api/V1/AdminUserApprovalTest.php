@@ -55,6 +55,24 @@ it('allows an admin to reject a user and returns the reason to Flutter', functio
         ->assertJsonPath('rejectionReason', 'Telegram account could not be verified.');
 });
 
+it('resets approval when a user changes Telegram username', function (): void {
+    $approvedUser = User::factory()->create([
+        'telegram_username' => 'approved_student',
+    ]);
+
+    Sanctum::actingAs($approvedUser);
+
+    $this->patchJson('/api/v1/me', [
+        'telegramUsername' => '@New_Student_Name',
+    ])->assertOk()
+        ->assertJsonPath('data.telegramUsername', 'new_student_name')
+        ->assertJsonPath('data.accountStatus', 'pending');
+
+    $this->getJson('/api/v1/me/learning-summary')
+        ->assertForbidden()
+        ->assertJsonPath('accountStatus', 'pending');
+});
+
 it('prevents non-admin users from reviewing accounts', function (): void {
     $user = User::factory()->create();
     $pendingUser = User::factory()->pending()->create();
