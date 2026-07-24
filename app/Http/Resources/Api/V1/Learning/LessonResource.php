@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Http\Resources\Api\V1\Learning;
 
-use App\Http\Resources\Api\V1\Assessment\AssessmentResource;
 use App\Http\Resources\Api\V1\MediaResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -13,6 +12,10 @@ final class LessonResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
+        $video = $this->relationLoaded('media')
+            ? $this->media->firstWhere('collection_name', 'video')
+            : null;
+
         return [
             'id' => $this->id,
             'courseId' => $this->course_id,
@@ -28,7 +31,8 @@ final class LessonResource extends JsonResource
             'publishedAt' => $this->published_at?->toISOString(),
             'course' => $this->relationLoaded('course') ? CourseResource::make($this->course) : null,
             'courseModule' => $this->relationLoaded('courseModule') ? CourseModuleResource::make($this->courseModule) : null,
-            'assessment' => $this->relationLoaded('assessment') ? AssessmentResource::make($this->assessment) : null,
+            'assessment' => $this->relationLoaded('assessment') ? AssessmentSummaryResource::make($this->assessment) : null,
+            'videoUrl' => $video?->getUrl(),
             'video' => $this->relationLoaded('media') ? MediaResource::collection($this->media->where('collection_name', 'video')->values()) : null,
             'files' => $this->relationLoaded('media') ? MediaResource::collection($this->media->where('collection_name', 'files')->values()) : null,
             'images' => $this->relationLoaded('media') ? MediaResource::collection($this->media->where('collection_name', 'images')->values()) : null,
