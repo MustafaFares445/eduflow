@@ -26,8 +26,6 @@ final class UserResource extends JsonResource
             'isRejected' => $accountStatus === 'rejected',
             'rejectionReason' => $this->rejection_reason,
             'accountReviewedAt' => $this->account_reviewed_at?->toISOString(),
-            'accountReviewedBy' => $this->account_reviewed_by,
-            'isAdmin' => (bool) $this->is_admin,
             'bio' => $this->bio,
             'timezone' => $this->timezone,
             'locale' => $this->locale,
