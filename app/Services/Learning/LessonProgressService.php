@@ -19,10 +19,19 @@ final class LessonProgressService
 
     public function update(User $user, Lesson $lesson, LessonProgressData $data): LessonProgress
     {
-        $enrollment = Enrollment::firstOrCreate(
-            ['user_id' => $user->id, 'course_id' => $lesson->course_id],
-            ['status' => 'active', 'progress_percentage' => 0, 'enrolled_at' => now()],
-        );
+        $enrollment = Enrollment::query()
+            ->where('user_id', $user->id)
+            ->where('course_id', $lesson->course_id)
+            ->firstOrFail();
+
+        abort_if($enrollment->isExpired(), 403, __('Course access has expired.'));
+
+        $progressSeconds = min(max(0, $data->progressSeconds), (int) $lesson->duration_seconds);
+        $isCompleted = $data->status === LessonProgressStatus::Completed->value
+            || ($lesson->duration_seconds > 0 && $progressSeconds >= $lesson->duration_seconds);
+        $status = $isCompleted
+            ? LessonProgressStatus::Completed->value
+            : ($progressSeconds > 0 ? LessonProgressStatus::InProgress->value : $data->status);
 
         $progress = LessonProgress::query()->updateOrCreate(
             [
@@ -31,16 +40,17 @@ final class LessonProgressService
                 'lesson_id' => $lesson->id,
             ],
             [
-                'status' => $data->status,
-                'progress_seconds' => $data->progressSeconds,
-                'completed_at' => $data->status === LessonProgressStatus::Completed->value ? now() : null,
+                'status' => $status,
+                'progress_seconds' => $progressSeconds,
+                'completed_at' => $isCompleted ? now() : null,
                 'last_accessed_at' => now(),
             ]
         );
 
+        $enrollment->forceFill(['last_accessed_at' => now()])->save();
         $this->courseProgressCalculator->syncEnrollment($enrollment);
 
-        return $progress->fresh(['user', 'course.category', 'lesson']);
+        return $progress->fresh(['user', 'course.category', 'lesson.media']);
     }
 
     public function complete(User $user, Lesson $lesson): LessonProgress
