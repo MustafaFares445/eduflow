@@ -13,13 +13,19 @@ final class RegisterRequest extends FormRequest
         return true;
     }
 
+    protected function prepareForValidation(): void
+    {
+        $this->merge([
+            'fullName' => $this->input('fullName', $this->input('full_name')),
+        ]);
+    }
+
     public function rules(): array
     {
         return [
-            'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:255', 'unique:users,email'],
+            'fullName' => ['required', 'string', 'max:255'],
+            'phone' => ['required', 'string', 'max:50', 'unique:users,phone'],
             'password' => ['required', 'string', 'min:8'],
-            'phone' => ['nullable', 'string', 'max:50'],
             'locale' => ['nullable', 'string', 'max:10'],
             'timezone' => ['nullable', 'string', 'max:64'],
         ];
