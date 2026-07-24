@@ -23,10 +23,10 @@ final class UpdateProfileRequest extends FormRequest
         }
 
         if ($this->has('telegramUsername') || $this->has('telegram_username')) {
-            $updates['telegramUsername'] = ltrim(trim((string) $this->input(
+            $updates['telegramUsername'] = strtolower(ltrim(trim((string) $this->input(
                 'telegramUsername',
                 $this->input('telegram_username')
-            )), '@');
+            )), '@'));
         }
 
         if ($updates !== []) {
@@ -38,18 +38,12 @@ final class UpdateProfileRequest extends FormRequest
     {
         return [
             'name' => ['sometimes', 'string', 'max:255'],
-            'phone' => [
-                'sometimes',
-                'string',
-                'max:50',
-                Rule::unique('users', 'phone')->ignore($this->user()?->id),
-            ],
             'telegramUsername' => [
                 'sometimes',
                 'string',
                 'min:3',
                 'max:64',
-                'regex:/^[A-Za-z0-9_]+$/',
+                'regex:/^[a-z0-9_]+$/',
                 Rule::unique('users', 'telegram_username')->ignore($this->user()?->id),
             ],
             'bio' => ['nullable', 'string'],
