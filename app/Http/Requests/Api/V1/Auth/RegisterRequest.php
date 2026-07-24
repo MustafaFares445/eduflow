@@ -15,8 +15,11 @@ final class RegisterRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
+        $phone = preg_replace('/\s+/', '', trim((string) $this->input('phone')));
+
         $this->merge([
             'fullName' => $this->input('fullName', $this->input('full_name')),
+            'phone' => $phone,
         ]);
     }
 
