@@ -6,13 +6,12 @@ namespace App\Http\Middleware;
 
 use App\Enums\Auth\AccountStatus;
 use Closure;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 final class EnsureAccountApproved
 {
-    public function handle(Request $request, Closure $next): Response|JsonResponse
+    public function handle(Request $request, Closure $next): Response
     {
         $user = $request->user();
         $status = $user?->account_status?->value ?? $user?->account_status;
