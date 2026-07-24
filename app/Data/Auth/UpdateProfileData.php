@@ -11,6 +11,7 @@ final class UpdateProfileData extends Data
     public function __construct(
         public ?string $name = null,
         public ?string $phone = null,
+        public ?string $telegramUsername = null,
         public ?string $bio = null,
         public ?string $timezone = null,
         public ?string $locale = null,
