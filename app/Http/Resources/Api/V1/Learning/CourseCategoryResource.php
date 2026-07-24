@@ -19,11 +19,14 @@ final class CourseCategoryResource extends JsonResource
             'description' => $this->description,
             'icon' => $this->icon,
             'color' => $this->color,
+            'imageUrl' => method_exists($this->resource, 'getFirstMediaUrl')
+                ? ($this->getFirstMediaUrl('image') ?: null)
+                : null,
             'isActive' => (bool) $this->is_active,
             'sortOrder' => (int) $this->sort_order,
             'parent' => $this->relationLoaded('parent') ? self::make($this->parent) : null,
             'children' => $this->relationLoaded('children') ? self::collection($this->children) : null,
-            'coursesCount' => $this->courses_count ?? null,
+            'coursesCount' => (int) ($this->courses_count ?? 0),
             'createdAt' => $this->created_at?->toISOString(),
             'updatedAt' => $this->updated_at?->toISOString(),
         ];

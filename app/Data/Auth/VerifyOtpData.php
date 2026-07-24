@@ -6,11 +6,11 @@ namespace App\Data\Auth;
 
 use Spatie\LaravelData\Data;
 
-final class LoginData extends Data
+final class VerifyOtpData extends Data
 {
     public function __construct(
         public string $phone,
-        public string $password,
+        public string $otp,
         public ?string $deviceName = null,
     ) {}
 }

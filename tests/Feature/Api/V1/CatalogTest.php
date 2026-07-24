@@ -15,7 +15,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
 
-it('returns the catalog tree and only public published courses', function (): void {
+it('returns category trees and safe public course metadata', function (): void {
     $root = CourseCategory::create([
         'parent_id' => null,
         'name' => 'Academic Year 1',
@@ -55,8 +55,6 @@ it('returns the catalog tree and only public published courses', function (): vo
         'instructor_id' => $instructor->id,
         'title' => 'Hidden Course',
         'slug' => 'hidden-course',
-        'short_description' => 'Hidden from catalog',
-        'description' => 'Draft private course',
         'level' => CourseLevel::Beginner->value,
         'language' => 'en',
         'status' => CourseStatus::Draft->value,
@@ -66,7 +64,6 @@ it('returns the catalog tree and only public published courses', function (): vo
     $module = CourseModule::create([
         'course_id' => $visibleCourse->id,
         'title' => 'Module 1',
-        'description' => 'Module description',
         'position' => 1,
         'is_active' => true,
     ]);
@@ -74,13 +71,12 @@ it('returns the catalog tree and only public published courses', function (): vo
     Lesson::create([
         'course_id' => $visibleCourse->id,
         'course_module_id' => $module->id,
-        'title' => 'Lesson 1',
-        'slug' => 'lesson-1',
+        'title' => 'Paid lesson',
+        'slug' => 'paid-lesson',
         'type' => LessonType::Video->value,
-        'body' => 'Lesson body',
         'duration_seconds' => 300,
         'position' => 1,
-        'is_preview' => true,
+        'is_preview' => false,
         'is_active' => true,
         'published_at' => now(),
     ]);
@@ -88,7 +84,8 @@ it('returns the catalog tree and only public published courses', function (): vo
     $this->getJson('/api/v1/catalog/categories')
         ->assertOk()
         ->assertJsonPath('data.0.name', 'Academic Year 1')
-        ->assertJsonPath('data.0.children.0.name', 'Mathematics');
+        ->assertJsonPath('data.0.children.0.name', 'Mathematics')
+        ->assertJsonPath('data.0.children.0.imageUrl', null);
 
     $this->getJson('/api/v1/catalog/courses')
         ->assertOk()
@@ -98,5 +95,8 @@ it('returns the catalog tree and only public published courses', function (): vo
     $this->getJson('/api/v1/catalog/courses/'.$visibleCourse->id)
         ->assertOk()
         ->assertJsonPath('data.title', 'Visible Course')
-        ->assertJsonPath('data.modules.0.title', 'Module 1');
+        ->assertJsonPath('data.modules', null)
+        ->assertJsonPath('data.lessons', null);
+
+    $this->getJson('/api/v1/catalog/courses/'.$hiddenCourse->id)->assertNotFound();
 });

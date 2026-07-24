@@ -13,10 +13,20 @@ final class LoginRequest extends FormRequest
         return true;
     }
 
+    protected function prepareForValidation(): void
+    {
+        $phone = preg_replace('/\s+/', '', trim((string) $this->input('phone')));
+
+        $this->merge([
+            'phone' => $phone,
+            'deviceName' => $this->input('deviceName', $this->input('device_name')),
+        ]);
+    }
+
     public function rules(): array
     {
         return [
-            'email' => ['required', 'email'],
+            'phone' => ['required', 'string', 'max:50'],
             'password' => ['required', 'string'],
             'deviceName' => ['nullable', 'string', 'max:255'],
         ];

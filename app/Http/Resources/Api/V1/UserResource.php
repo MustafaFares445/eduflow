@@ -14,8 +14,9 @@ final class UserResource extends JsonResource
         return [
             'id' => $this->id,
             'name' => $this->name,
-            'email' => $this->email,
+            'email' => str_ends_with((string) $this->email, '@phone.eduflow.local') ? null : $this->email,
             'phone' => $this->phone,
+            'phoneVerifiedAt' => $this->phone_verified_at?->toISOString(),
             'bio' => $this->bio,
             'timezone' => $this->timezone,
             'locale' => $this->locale,

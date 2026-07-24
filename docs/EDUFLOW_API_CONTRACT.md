@@ -1,25 +1,16 @@
-# EduFlow Learning App API Contract
+# EduFlow Mobile API Contract
 
 Base URL: `/api/v1`
 
-Auth: Sanctum token auth for protected routes.
+Authentication: Laravel Sanctum bearer tokens.
 
-Scope note:
-- Authentication is implemented.
-- Authorization is intentionally out of scope for this pass.
-- OTP and QR are UI-only for this pass.
+This contract is intentionally limited to the Flutter student application. Content-management, reporting, notification-template, assessment-authoring, grading, and administrative CRUD routes are not exposed through the mobile API.
 
 ## Conventions
 
-- Request field names use camelCase.
-- Relation identifiers in responses use camelCase suffixes like `categoryId`, `courseId`, `lessonId`.
-- Most single-resource responses are returned as Laravel JSON resources.
-- Most collection responses are wrapped in `data` with standard Laravel pagination `links` and `meta`.
-- Decimal casts are serialized as strings, for example `"0.00"` and `"5.00"`.
-
-## Authentication Headers
-
-For protected requests:
+- Request and response properties use camelCase.
+- Registration also accepts the existing Flutter alias `full_name`.
+- Protected routes require:
 
 ```http
 Authorization: Bearer <token>
@@ -27,1315 +18,332 @@ Accept: application/json
 Content-Type: application/json
 ```
 
-## Standard Validation Error
+- Collection responses use Laravel pagination with `data`, `links`, and `meta`.
+- Validation failures use HTTP `422`.
+- Missing or inaccessible records use HTTP `404`.
+- Expired course access uses HTTP `403`.
 
-```json
-{
-  "message": "The given data was invalid.",
-  "errors": {
-    "email": ["The email field is required."]
-  }
-}
-```
+## Demo Data
 
-## Demo Credentials
+After running `php artisan migrate:fresh --seed`:
 
-Seeder data is available through `DatabaseSeeder`.
+- Student phone: `+963999999999`
+- Student password: `password123`
+- Instructor phone: `+963988888888`
+- Instructor password: `password123`
+- Demo QR/enrollment code: `EDUFLOW-DEMO-2026`
 
-- Instructor: `instructor@eduflow.local` / `password123`
-- Student: `student@eduflow.local` / `password123`
-
-## Demo Content
-
-The demo seeder creates:
-
-- Category tree:
-  - Academic Year 1
-  - Mathematics
-- Course:
-  - Foundations of Maths
-- Module:
-  - Numbers and Sets
-- Lesson:
-  - Introduction to Numbers
-- Assessment:
-  - Demo Quiz
-- Question:
-  - Which command installs the API scaffolding?
-- Notification template:
-  - `course.published`
-
-## Common Response Shapes
-
-### Single resource
-
-```json
-{
-  "data": {
-    "id": 1
-  }
-}
-```
-
-### Paginated collection
-
-```json
-{
-  "data": [],
-  "links": {
-    "first": "http://localhost/api/v1/courses?page=1",
-    "last": "http://localhost/api/v1/courses?page=1",
-    "prev": null,
-    "next": null
-  },
-  "meta": {
-    "current_page": 1,
-    "from": 1,
-    "last_page": 1,
-    "path": "http://localhost/api/v1/courses",
-    "per_page": 20,
-    "to": 1,
-    "total": 1
-  }
-}
-```
-
-## Auth
+## Authentication
 
 ### POST `/auth/register`
 
-Create a new user and return a Sanctum token.
-
-Request:
+Creates an unverified phone account and sends/generates a six-digit OTP.
 
 ```json
 {
-  "name": "EduFlow Student",
-  "email": "student@example.com",
-  "password": "password123",
+  "fullName": "EduFlow Student",
   "phone": "+963999999999",
-  "locale": "en",
+  "password": "password123",
+  "locale": "ar",
   "timezone": "Asia/Damascus"
 }
 ```
 
-Response:
+`full_name` is accepted as an alias for `fullName`.
 
 ```json
 {
   "user": {
     "id": 1,
     "name": "EduFlow Student",
-    "email": "student@example.com",
+    "email": null,
     "phone": "+963999999999",
-    "bio": null,
-    "timezone": "Asia/Damascus",
-    "locale": "en",
-    "isActive": true,
-    "lastLoginAt": "2026-06-06T18:00:00.000000Z",
-    "avatarUrl": null,
-    "createdAt": "2026-06-06T18:00:00.000000Z",
-    "updatedAt": "2026-06-06T18:00:00.000000Z"
+    "phoneVerifiedAt": null,
+    "avatarUrl": null
   },
-  "token": "1|eduflow-personal-access-token"
+  "message": "Verification code sent successfully.",
+  "verificationExpiresAt": "2026-07-24T12:10:00.000000Z",
+  "debugOtp": "123456"
+}
+```
+
+`debugOtp` is returned only in `local` and `testing` environments. Connect an SMS provider before production launch.
+
+### POST `/auth/verify-otp`
+
+```json
+{
+  "phone": "+963999999999",
+  "otp": "123456",
+  "deviceName": "Android phone"
+}
+```
+
+```json
+{
+  "user": {},
+  "token": "1|sanctum-token",
+  "message": "Phone verified successfully."
+}
+```
+
+### POST `/auth/resend-otp`
+
+Rate limited to three requests per minute.
+
+```json
+{
+  "phone": "+963999999999"
 }
 ```
 
 ### POST `/auth/login`
 
-Request:
-
 ```json
 {
-  "email": "student@eduflow.local",
+  "phone": "+963999999999",
   "password": "password123",
-  "deviceName": "iPhone 15"
+  "deviceName": "Android phone"
 }
 ```
 
-Response:
-
-```json
-{
-  "user": {
-    "id": 2,
-    "name": "EduFlow Student",
-    "email": "student@eduflow.local",
-    "phone": null,
-    "bio": null,
-    "timezone": "Asia/Damascus",
-    "locale": "en",
-    "isActive": true,
-    "lastLoginAt": "2026-06-06T18:00:00.000000Z",
-    "avatarUrl": null,
-    "createdAt": "2026-06-06T18:00:00.000000Z",
-    "updatedAt": "2026-06-06T18:00:00.000000Z"
-  },
-  "token": "2|eduflow-personal-access-token"
-}
-```
+Returns `user`, `token`, and `message`. Login is rejected when the account is unverified or inactive.
 
 ### POST `/auth/logout`
 
-No request body.
-
-Response:
-
-```json
-{
-  "message": "Logged out successfully."
-}
-```
+Revokes the current token.
 
 ### POST `/auth/logout-all`
 
-No request body.
+Revokes all user tokens.
 
-Response:
-
-```json
-{
-  "message": "Logged out from all devices."
-}
-```
+## Profile
 
 ### GET `/me`
 
-Response:
-
-```json
-{
-  "data": {
-    "id": 2,
-    "name": "EduFlow Student",
-    "email": "student@eduflow.local",
-    "phone": null,
-    "bio": null,
-    "timezone": "Asia/Damascus",
-    "locale": "en",
-    "isActive": true,
-    "lastLoginAt": "2026-06-06T18:00:00.000000Z",
-    "avatarUrl": null,
-    "createdAt": "2026-06-06T18:00:00.000000Z",
-    "updatedAt": "2026-06-06T18:00:00.000000Z"
-  }
-}
-```
+Returns the authenticated user.
 
 ### PATCH `/me`
 
-Request:
-
 ```json
 {
-  "name": "Updated Student",
+  "fullName": "Updated Student",
   "phone": "+963944444444",
   "bio": "Learning with EduFlow",
-  "timezone": "Asia/Damascus",
-  "locale": "ar"
+  "locale": "ar",
+  "timezone": "Asia/Damascus"
 }
 ```
 
-Response:
-
-```json
-{
-  "data": {
-    "id": 2,
-    "name": "Updated Student",
-    "email": "student@eduflow.local",
-    "phone": "+963944444444",
-    "bio": "Learning with EduFlow",
-    "timezone": "Asia/Damascus",
-    "locale": "ar",
-    "isActive": true,
-    "lastLoginAt": "2026-06-06T18:00:00.000000Z",
-    "avatarUrl": null,
-    "createdAt": "2026-06-06T18:00:00.000000Z",
-    "updatedAt": "2026-06-06T18:00:00.000000Z"
-  }
-}
-```
+`full_name` and `name` are also accepted.
 
 ### POST `/me/avatar`
 
 Multipart form-data:
 
 ```text
-avatar: <file>
+avatar: <image>
 ```
 
-Response:
+### GET `/me/learning-summary`
 
 ```json
 {
   "data": {
-    "id": 2,
-    "name": "Updated Student",
-    "email": "student@eduflow.local",
-    "phone": "+963944444444",
-    "bio": "Learning with EduFlow",
-    "timezone": "Asia/Damascus",
-    "locale": "ar",
-    "isActive": true,
-    "lastLoginAt": "2026-06-06T18:00:00.000000Z",
-    "avatarUrl": "http://localhost/storage/1/avatar.jpg",
-    "createdAt": "2026-06-06T18:00:00.000000Z",
-    "updatedAt": "2026-06-06T18:00:00.000000Z"
+    "coursesCount": 3,
+    "activeCoursesCount": 2,
+    "completedCoursesCount": 1,
+    "completedLessonsCount": 18,
+    "learningMinutes": 720
   }
 }
 ```
 
-## Catalog
+## Public Catalog
+
+Public catalog endpoints return metadata only. They never return paid lesson media or assessment answers.
 
 ### GET `/catalog/categories`
 
 Returns the active category tree.
 
-Response:
+Category properties include:
 
-```json
-{
-  "data": [
-    {
-      "id": 1,
-      "parentId": null,
-      "name": "Academic Year 1",
-      "slug": "academic-year-1",
-      "description": "Primary academic year",
-      "icon": null,
-      "color": null,
-      "isActive": true,
-      "sortOrder": 1,
-      "parent": null,
-      "children": [
-        {
-          "id": 2,
-          "parentId": 1,
-          "name": "Mathematics",
-          "slug": "mathematics",
-          "description": "Core math subject",
-          "icon": null,
-          "color": null,
-          "isActive": true,
-          "sortOrder": 1,
-          "parent": null,
-          "children": [],
-          "coursesCount": 1,
-          "createdAt": "2026-06-06T18:00:00.000000Z",
-          "updatedAt": "2026-06-06T18:00:00.000000Z"
-        }
-      ],
-      "coursesCount": 0,
-      "createdAt": "2026-06-06T18:00:00.000000Z",
-      "updatedAt": "2026-06-06T18:00:00.000000Z"
-    }
-  ]
-}
+```text
+id, parentId, name, slug, description, icon, color, imageUrl,
+isActive, sortOrder, coursesCount, children
 ```
 
 ### GET `/catalog/courses`
 
-Query params:
+Supported query parameters:
 
 ```text
-?perPage=20&search=math&filter[categoryId]=2&filter[level]=beginner&sort=title
+perPage
+search
+filter[categoryId]
+filter[level]
+sort
 ```
 
-Response:
-
-```json
-{
-  "data": [
-    {
-      "id": 1,
-      "categoryId": 2,
-      "instructorId": 1,
-      "title": "Foundations of Maths",
-      "slug": "foundations-of-maths",
-      "shortDescription": "A beginner course for core math skills.",
-      "description": "This demo course powers the EduFlow sample content.",
-      "level": "beginner",
-      "language": "en",
-      "status": "published",
-      "visibility": "public",
-      "durationMinutes": 7,
-      "lessonsCount": 1,
-      "studentsCount": 1,
-      "averageRating": "0.00",
-      "ratingsCount": 0,
-      "publishedAt": "2026-06-06T18:00:00.000000Z",
-      "category": {
-        "id": 2,
-        "parentId": 1,
-        "name": "Mathematics",
-        "slug": "mathematics",
-        "description": "Core math subject",
-        "icon": null,
-        "color": null,
-        "isActive": true,
-        "sortOrder": 1,
-        "parent": {
-          "id": 1,
-          "parentId": null,
-          "name": "Academic Year 1",
-          "slug": "academic-year-1",
-          "description": "Primary academic year",
-          "icon": null,
-          "color": null,
-          "isActive": true,
-          "sortOrder": 1,
-          "parent": null,
-          "children": null,
-          "coursesCount": 0,
-          "createdAt": "2026-06-06T18:00:00.000000Z",
-          "updatedAt": "2026-06-06T18:00:00.000000Z"
-        },
-        "children": [],
-        "coursesCount": 1,
-        "createdAt": "2026-06-06T18:00:00.000000Z",
-        "updatedAt": "2026-06-06T18:00:00.000000Z"
-      },
-      "instructor": {
-        "id": 1,
-        "name": "EduFlow Instructor",
-        "email": "instructor@eduflow.local",
-        "phone": null,
-        "bio": null,
-        "timezone": "Asia/Damascus",
-        "locale": "en",
-        "isActive": true,
-        "lastLoginAt": "2026-06-06T18:00:00.000000Z",
-        "avatarUrl": null,
-        "createdAt": "2026-06-06T18:00:00.000000Z",
-        "updatedAt": "2026-06-06T18:00:00.000000Z"
-      },
-      "modules": null,
-      "lessons": null,
-      "assessments": null,
-      "reviewsCount": 0,
-      "cover": [],
-      "introVideo": [],
-      "attachments": [],
-      "createdAt": "2026-06-06T18:00:00.000000Z",
-      "updatedAt": "2026-06-06T18:00:00.000000Z"
-    }
-  ]
-}
-```
+Course list properties include `coverUrl` and `introVideoUrl` when media exists.
 
 ### GET `/catalog/courses/{course}`
 
-Response includes the full course tree.
+Returns safe public course metadata. `modules`, `lessons`, and assessments are not loaded here.
+
+## Course Activation
+
+### POST `/enrollment-codes/redeem`
+
+Protected and rate limited.
+
+```json
+{
+  "code": "EDUFLOW-DEMO-2026"
+}
+```
 
 ```json
 {
   "data": {
     "id": 1,
-    "categoryId": 2,
-    "instructorId": 1,
-    "title": "Foundations of Maths",
-    "slug": "foundations-of-maths",
-    "shortDescription": "A beginner course for core math skills.",
-    "description": "This demo course powers the EduFlow sample content.",
-    "level": "beginner",
-    "language": "en",
-    "status": "published",
-    "visibility": "public",
-    "durationMinutes": 7,
-    "lessonsCount": 1,
-    "studentsCount": 1,
-    "averageRating": "0.00",
-    "ratingsCount": 0,
-    "publishedAt": "2026-06-06T18:00:00.000000Z",
-    "category": { "...": "see category resource" },
-    "instructor": { "...": "see user resource" },
-    "modules": [
-      {
-        "id": 1,
-        "courseId": 1,
-        "title": "Numbers and Sets",
-        "description": "Module one overview",
-        "position": 1,
-        "isActive": true,
-        "course": null,
-        "lessons": [
-          {
-            "id": 1,
-            "courseId": 1,
-            "courseModuleId": 1,
-            "title": "Introduction to Numbers",
-            "slug": "introduction-to-numbers",
-            "type": "video",
-            "body": "Demo lesson body",
-            "durationSeconds": 420,
-            "position": 1,
-            "isPreview": true,
-            "isActive": true,
-            "publishedAt": "2026-06-06T18:00:00.000000Z",
-            "course": null,
-            "courseModule": null,
-            "assessment": {
-              "id": 1,
-              "courseId": 1,
-              "lessonId": 1,
-              "title": "Demo Quiz",
-              "description": "Sample assessment for the demo course",
-              "type": "quiz",
-              "status": "published",
-              "passingScore": 60,
-              "maxAttempts": 3,
-              "timeLimitMinutes": 15,
-              "shuffleQuestions": false,
-              "showResultImmediately": true,
-              "position": 1,
-              "course": null,
-              "lesson": null,
-              "questions": [],
-              "attempts": [],
-              "createdAt": "2026-06-06T18:00:00.000000Z",
-              "updatedAt": "2026-06-06T18:00:00.000000Z"
-            },
-            "video": [],
-            "files": [],
-            "images": [],
-            "createdAt": "2026-06-06T18:00:00.000000Z",
-            "updatedAt": "2026-06-06T18:00:00.000000Z"
-          }
-        ],
-        "createdAt": "2026-06-06T18:00:00.000000Z",
-        "updatedAt": "2026-06-06T18:00:00.000000Z"
-      }
-    ],
-    "lessons": null,
-    "assessments": null,
-    "reviewsCount": 0,
-    "cover": [],
-    "introVideo": [],
-    "attachments": [],
-    "createdAt": "2026-06-06T18:00:00.000000Z",
-    "updatedAt": "2026-06-06T18:00:00.000000Z"
-  }
-}
-```
-
-### GET `/catalog/courses/{course}/modules`
-
-```json
-{
-  "data": [
-    {
-      "id": 1,
-      "courseId": 1,
-      "title": "Numbers and Sets",
-      "description": "Module one overview",
-      "position": 1,
-      "isActive": true,
-      "course": { "...": "course resource" },
-      "lessons": [
-        {
-          "id": 1,
-          "courseId": 1,
-          "courseModuleId": 1,
-          "title": "Introduction to Numbers",
-          "slug": "introduction-to-numbers",
-          "type": "video",
-          "body": "Demo lesson body",
-          "durationSeconds": 420,
-          "position": 1,
-          "isPreview": true,
-          "isActive": true,
-          "publishedAt": "2026-06-06T18:00:00.000000Z",
-          "course": null,
-          "courseModule": null,
-          "assessment": null,
-          "video": [],
-          "files": [],
-          "images": [],
-          "createdAt": "2026-06-06T18:00:00.000000Z",
-          "updatedAt": "2026-06-06T18:00:00.000000Z"
-        }
-      ],
-      "createdAt": "2026-06-06T18:00:00.000000Z",
-      "updatedAt": "2026-06-06T18:00:00.000000Z"
-    }
-  ]
-}
-```
-
-### GET `/catalog/lessons/{lesson}`
-
-```json
-{
-  "data": {
-    "id": 1,
-    "courseId": 1,
-    "courseModuleId": 1,
-    "title": "Introduction to Numbers",
-    "slug": "introduction-to-numbers",
-    "type": "video",
-    "body": "Demo lesson body",
-    "durationSeconds": 420,
-    "position": 1,
-    "isPreview": true,
-    "isActive": true,
-    "publishedAt": "2026-06-06T18:00:00.000000Z",
-    "course": { "...": "course resource" },
-    "courseModule": { "...": "module resource" },
-    "assessment": { "...": "assessment resource" },
-    "video": [],
-    "files": [],
-    "images": [],
-    "createdAt": "2026-06-06T18:00:00.000000Z",
-    "updatedAt": "2026-06-06T18:00:00.000000Z"
-  }
-}
-```
-
-## Learning Management
-
-### Course Categories
-
-#### POST `/course-categories`
-
-Request:
-
-```json
-{
-  "parentId": 1,
-  "name": "Physics",
-  "description": "Science subject",
-  "icon": "atom",
-  "color": "#00A3FF",
-  "isActive": true,
-  "sortOrder": 2
-}
-```
-
-Response: `CourseCategoryResource`
-
-#### PUT `/course-categories/{course_category}`
-
-Same body as create.
-
-#### DELETE `/course-categories/{course_category}`
-
-No body.
-
-### Courses
-
-#### POST `/courses`
-
-Request:
-
-```json
-{
-  "categoryId": 2,
-  "instructorId": 1,
-  "title": "Functions and Graphs",
-  "shortDescription": "Learn how functions work.",
-  "description": "Full course body.",
-  "level": "beginner",
-  "language": "en",
-  "status": "draft",
-  "visibility": "public",
-  "publishedAt": "2026-06-06T18:00:00.000000Z"
-}
-```
-
-#### PUT `/courses/{course}`
-
-Same body as create.
-
-#### POST `/courses/{course}/publish`
-
-No body.
-
-#### POST `/courses/{course}/archive`
-
-No body.
-
-#### POST `/courses/{course}/media`
-
-Multipart form-data:
-
-```text
-cover: <image file>
-introVideo: <video file>
-attachments[]: <file>
-attachments[]: <file>
-```
-
-Response:
-
-```json
-{
-  "data": {
-    "id": 1,
-    "categoryId": 2,
-    "instructorId": 1,
-    "title": "Foundations of Maths",
-    "slug": "foundations-of-maths",
-    "shortDescription": "A beginner course for core math skills.",
-    "description": "This demo course powers the EduFlow sample content.",
-    "level": "beginner",
-    "language": "en",
-    "status": "published",
-    "visibility": "public",
-    "durationMinutes": 7,
-    "lessonsCount": 1,
-    "studentsCount": 1,
-    "averageRating": "0.00",
-    "ratingsCount": 0,
-    "publishedAt": "2026-06-06T18:00:00.000000Z",
-    "category": { "...": "category resource" },
-    "instructor": { "...": "user resource" },
-    "modules": null,
-    "lessons": null,
-    "assessments": null,
-    "reviewsCount": 0,
-    "cover": [
-      {
-        "id": 1,
-        "name": "cover",
-        "fileName": "cover.jpg",
-        "mimeType": "image/jpeg",
-        "collectionName": "cover",
-        "url": "http://localhost/storage/1/cover.jpg",
-        "size": 123456,
-        "createdAt": "2026-06-06T18:00:00.000000Z"
-      }
-    ],
-    "introVideo": [],
-    "attachments": [],
-    "createdAt": "2026-06-06T18:00:00.000000Z",
-    "updatedAt": "2026-06-06T18:00:00.000000Z"
-  }
-}
-```
-
-#### DELETE `/courses/{course}/media/{media}`
-
-No body.
-
-### Course Modules
-
-#### POST `/course-modules`
-
-Request:
-
-```json
-{
-  "courseId": 1,
-  "title": "Fractions",
-  "description": "Module about fractions",
-  "position": 2,
-  "isActive": true
-}
-```
-
-#### PUT `/course-modules/{course_module}`
-
-Same body as create.
-
-#### POST `/course-modules/reorder`
-
-Request:
-
-```json
-{
-  "items": [
-    { "id": 1, "position": 1 },
-    { "id": 2, "position": 2 }
-  ]
-}
-```
-
-#### DELETE `/course-modules/{course_module}`
-
-No body.
-
-### Lessons
-
-#### POST `/lessons`
-
-Request:
-
-```json
-{
-  "courseId": 1,
-  "courseModuleId": 1,
-  "title": "Introduction to Fractions",
-  "type": "video",
-  "body": "Lesson body.",
-  "durationSeconds": 420,
-  "position": 1,
-  "isPreview": true,
-  "isActive": true,
-  "publishedAt": "2026-06-06T18:00:00.000000Z"
-}
-```
-
-#### PUT `/lessons/{lesson}`
-
-Same body as create.
-
-#### POST `/lessons/reorder`
-
-Request:
-
-```json
-{
-  "items": [
-    { "id": 1, "position": 1 },
-    { "id": 2, "position": 2 }
-  ]
-}
-```
-
-#### POST `/lessons/{lesson}/media`
-
-Multipart form-data:
-
-```text
-video: <video file>
-files[]: <file>
-files[]: <file>
-images[]: <image file>
-```
-
-#### DELETE `/lessons/{lesson}/media/{media}`
-
-No body.
-
-### Enrollment and Progress
-
-#### POST `/courses/{course}/enroll`
-
-No request body.
-
-Response:
-
-```json
-{
-  "data": {
-    "id": 1,
-    "userId": 2,
     "courseId": 1,
     "status": "active",
     "progressPercentage": "0.00",
-    "enrolledAt": "2026-06-06T18:00:00.000000Z",
-    "completedAt": null,
-    "lastAccessedAt": "2026-06-06T18:00:00.000000Z",
-    "user": { "...": "user resource" },
-    "course": { "...": "course resource" },
-    "createdAt": "2026-06-06T18:00:00.000000Z",
-    "updatedAt": "2026-06-06T18:00:00.000000Z"
-  }
+    "enrolledAt": "2026-07-24T12:00:00.000000Z",
+    "expiresAt": "2027-07-24T12:00:00.000000Z",
+    "isExpired": false,
+    "course": {}
+  },
+  "message": "Course activated successfully."
 }
 ```
 
-#### GET `/me/enrollments`
+Redemption is transactional and idempotent for the same user/code combination.
 
-Response:
+## My Courses
 
-```json
-{
-  "data": [
-    {
-      "id": 1,
-      "userId": 2,
-      "courseId": 1,
-      "status": "completed",
-      "progressPercentage": "100.00",
-      "enrolledAt": "2026-06-06T18:00:00.000000Z",
-      "completedAt": "2026-06-06T18:00:00.000000Z",
-      "lastAccessedAt": "2026-06-06T18:00:00.000000Z",
-      "user": { "...": "user resource" },
-      "course": { "...": "course resource" },
-      "createdAt": "2026-06-06T18:00:00.000000Z",
-      "updatedAt": "2026-06-06T18:00:00.000000Z"
-    }
-  ]
-}
-```
+### GET `/me/enrollments`
 
-#### GET `/me/enrollments/{enrollment}`
+Returns paginated enrollments ordered by recent access.
 
-Response:
+Enrollment status is returned as `expired` when `expiresAt` is in the past.
+
+### GET `/me/enrollments/{enrollment}`
+
+Returns only an enrollment owned by the authenticated user.
+
+### GET `/me/courses/{course}`
+
+Returns the personalized course-learning payload used by the Flutter details and player screens.
 
 ```json
 {
   "data": {
-    "id": 1,
-    "userId": 2,
-    "courseId": 1,
-    "status": "completed",
-    "progressPercentage": "100.00",
-    "enrolledAt": "2026-06-06T18:00:00.000000Z",
-    "completedAt": "2026-06-06T18:00:00.000000Z",
-    "lastAccessedAt": "2026-06-06T18:00:00.000000Z",
-    "user": { "...": "user resource" },
-    "course": { "...": "course resource" },
-    "createdAt": "2026-06-06T18:00:00.000000Z",
-    "updatedAt": "2026-06-06T18:00:00.000000Z"
-  }
-}
-```
-
-#### PATCH `/lessons/{lesson}/progress`
-
-Request:
-
-```json
-{
-  "status": "completed",
-  "progressSeconds": 420
-}
-```
-
-Response:
-
-```json
-{
-  "data": {
-    "id": 1,
-    "userId": 2,
-    "courseId": 1,
-    "lessonId": 1,
-    "status": "completed",
-    "progressSeconds": 420,
-    "completedAt": "2026-06-06T18:00:00.000000Z",
-    "lastAccessedAt": "2026-06-06T18:00:00.000000Z",
-    "user": { "...": "user resource" },
-    "course": { "...": "course resource" },
-    "lesson": { "...": "lesson resource" },
-    "createdAt": "2026-06-06T18:00:00.000000Z",
-    "updatedAt": "2026-06-06T18:00:00.000000Z"
-  }
-}
-```
-
-#### POST `/lessons/{lesson}/complete`
-
-No request body.
-
-Response shape matches lesson progress resource.
-
-## Assessments
-
-### POST `/assessments`
-
-Request:
-
-```json
-{
-  "courseId": 1,
-  "lessonId": 1,
-  "title": "Demo Quiz",
-  "description": "Sample assessment",
-  "type": "quiz",
-  "status": "draft",
-  "passingScore": 60,
-  "maxAttempts": 3,
-  "timeLimitMinutes": 15,
-  "shuffleQuestions": false,
-  "showResultImmediately": true,
-  "position": 1
-}
-```
-
-### PUT `/assessments/{assessment}`
-
-Same body as create.
-
-### POST `/assessments/{assessment}/publish`
-
-No body.
-
-### POST `/assessments/{assessment}/archive`
-
-No body.
-
-### POST `/questions`
-
-Request:
-
-```json
-{
-  "assessmentId": 1,
-  "type": "multiple_choice",
-  "questionText": "Which command installs the API scaffolding?",
-  "explanation": "Laravel 13 uses install:api.",
-  "points": 5,
-  "position": 1,
-  "isActive": true
-}
-```
-
-### PUT `/questions/{question}`
-
-Same body as create.
-
-### POST `/questions/reorder`
-
-Request:
-
-```json
-{
-  "items": [
-    { "id": 1, "position": 1 },
-    { "id": 2, "position": 2 }
-  ]
-}
-```
-
-### POST `/question-options`
-
-Request:
-
-```json
-{
-  "questionId": 1,
-  "optionText": "php artisan install:api",
-  "isCorrect": true,
-  "position": 1
-}
-```
-
-### PUT `/question-options/{question_option}`
-
-Same body as create.
-
-### POST `/assessments/{assessment}/attempts`
-
-No body.
-
-Response:
-
-```json
-{
-  "data": {
-    "id": 1,
-    "assessmentId": 1,
-    "userId": 2,
-    "status": "started",
-    "startedAt": "2026-06-06T18:00:00.000000Z",
-    "submittedAt": null,
-    "expiresAt": "2026-06-06T18:15:00.000000Z",
-    "score": "0.00",
-    "maxScore": "5.00",
-    "percentage": "0.00",
-    "isPassed": false,
-    "attemptNumber": 1,
-    "gradedAt": null,
-    "assessment": { "...": "assessment resource" },
-    "user": { "...": "user resource" },
-    "answers": [],
-    "createdAt": "2026-06-06T18:00:00.000000Z",
-    "updatedAt": "2026-06-06T18:00:00.000000Z"
-  }
-}
-```
-
-### GET `/assessments/{assessment}/attempts`
-
-Returns a paginated list of attempts for the assessment.
-
-### GET `/attempts/{assessmentAttempt}`
-
-Returns the attempt with assessment, user, and answers loaded.
-
-### POST `/attempts/{assessmentAttempt}/answers`
-
-Request:
-
-```json
-{
-  "questionId": 1,
-  "selectedOptionId": 1,
-  "answerText": null,
-  "answerJson": null
-}
-```
-
-Response:
-
-```json
-{
-  "data": {
-    "id": 1,
-    "assessmentAttemptId": 1,
-    "questionId": 1,
-    "selectedOptionId": 1,
-    "answerText": null,
-    "answerJson": null,
-    "isCorrect": true,
-    "score": "5.00",
-    "gradedAt": "2026-06-06T18:00:00.000000Z",
-    "question": { "...": "question resource" },
-    "selectedOption": { "...": "question option resource" },
-    "createdAt": "2026-06-06T18:00:00.000000Z",
-    "updatedAt": "2026-06-06T18:00:00.000000Z"
-  }
-}
-```
-
-### POST `/attempts/{assessmentAttempt}/submit`
-
-No body.
-
-Response:
-
-```json
-{
-  "data": {
-    "id": 1,
-    "assessmentId": 1,
-    "userId": 2,
-    "status": "submitted",
-    "startedAt": "2026-06-06T18:00:00.000000Z",
-    "submittedAt": "2026-06-06T18:00:00.000000Z",
-    "expiresAt": "2026-06-06T18:15:00.000000Z",
-    "score": "5.00",
-    "maxScore": "5.00",
-    "percentage": "100.00",
-    "isPassed": true,
-    "attemptNumber": 1,
-    "gradedAt": "2026-06-06T18:00:00.000000Z",
-    "assessment": { "...": "assessment resource" },
-    "user": { "...": "user resource" },
-    "answers": [
+    "course": {},
+    "enrollment": {},
+    "summary": {
+      "videoCount": 8,
+      "fileCount": 4,
+      "completedLessonsCount": 3,
+      "resumeLessonId": 7
+    },
+    "modules": [
       {
         "id": 1,
-        "assessmentAttemptId": 1,
-        "questionId": 1,
-        "selectedOptionId": 1,
-        "answerText": null,
-        "answerJson": null,
-        "isCorrect": true,
-        "score": "5.00",
-        "gradedAt": "2026-06-06T18:00:00.000000Z",
-        "question": { "...": "question resource" },
-        "selectedOption": { "...": "question option resource" },
-        "createdAt": "2026-06-06T18:00:00.000000Z",
-        "updatedAt": "2026-06-06T18:00:00.000000Z"
+        "title": "Module",
+        "position": 1,
+        "lessons": [
+          {
+            "id": 7,
+            "title": "Lesson",
+            "type": "video",
+            "durationSeconds": 420,
+            "isPreview": false,
+            "canAccess": true,
+            "progress": {
+              "status": "in_progress",
+              "progressSeconds": 180,
+              "progressPercentage": 42.86,
+              "completedAt": null,
+              "lastAccessedAt": "2026-07-24T12:00:00.000000Z"
+            },
+            "video": {
+              "id": 20,
+              "fileName": "lesson.mp4",
+              "mimeType": "video/mp4",
+              "url": "https://example.test/lesson.mp4",
+              "thumbnailUrl": null,
+              "size": 123456
+            },
+            "files": [],
+            "assessment": null
+          }
+        ]
       }
-    ],
-    "createdAt": "2026-06-06T18:00:00.000000Z",
-    "updatedAt": "2026-06-06T18:00:00.000000Z"
+    ]
   }
 }
 ```
 
-### GET `/attempts/{assessmentAttempt}/result`
+The endpoint returns `404` when no enrollment exists and `403` when access has expired.
 
-Same shape as submit result.
+## Lesson Progress
 
-### POST `/assessment-attempts/{assessmentAttempt}/grade`
+### PATCH `/lessons/{lesson}/progress`
 
-Same shape as submit result.
+```json
+{
+  "status": "in_progress",
+  "progressSeconds": 180
+}
+```
+
+Allowed statuses:
+
+```text
+not_started
+in_progress
+completed
+```
+
+Behavior:
+
+- Requires an existing non-expired enrollment.
+- Progress is clamped between zero and lesson duration.
+- Reaching lesson duration marks the lesson completed.
+- The enrollment aggregate progress and last-accessed time are synchronized.
+
+The former dedicated `/complete` endpoint was removed; send `status: completed` through this endpoint.
 
 ## Notifications
 
 ### GET `/notifications`
 
-Returns authenticated user notifications.
+Returns paginated notifications owned by the authenticated user.
 
 ### PATCH `/notifications/{notification}/read`
 
-This endpoint returns the notification object directly, without a `data` wrapper.
-
-Response:
-
-```json
-{
-  "id": "17b66854-fa7a-4e01-8c63-f4c892f229e5",
-  "type": "course-updated",
-  "data": {
-    "title": "Course updated"
-  },
-  "readAt": "2026-06-06T18:00:00.000000Z",
-  "createdAt": "2026-06-06T18:00:00.000000Z",
-  "updatedAt": "2026-06-06T18:00:00.000000Z"
-}
-```
+Returns the notification in a `data` wrapper.
 
 ### PATCH `/notifications/read-all`
 
-```json
-{
-  "message": "Notifications marked as read."
-}
-```
+Marks all authenticated-user notifications as read.
 
 ### GET `/me/notification-preferences`
 
-Response:
-
-```json
-{
-  "data": {
-    "id": 1,
-    "userId": 2,
-    "emailEnabled": true,
-    "pushEnabled": true,
-    "inAppEnabled": true,
-    "courseUpdatesEnabled": true,
-    "assessmentUpdatesEnabled": true,
-    "createdAt": "2026-06-06T18:00:00.000000Z",
-    "updatedAt": "2026-06-06T18:00:00.000000Z"
-  }
-}
-```
-
 ### PATCH `/me/notification-preferences`
 
-Request:
+## Removed Mobile Routes
 
-```json
-{
-  "emailEnabled": true,
-  "pushEnabled": false,
-  "inAppEnabled": true,
-  "courseUpdatesEnabled": true,
-  "assessmentUpdatesEnabled": false
-}
-```
+The following groups are deliberately absent from `/api/v1`:
 
-### GET `/notification-templates`
+- Course/category/module/lesson management CRUD
+- Course and lesson media-management routes
+- Assessment, question, option, attempt, result, and grading routes
+- Notification-template CRUD
+- Learning/reporting/export routes
+- Direct unaudited course-enrollment route
 
-Paginated list of templates.
-
-### POST `/notification-templates`
-
-Request:
-
-```json
-{
-  "key": "course.published",
-  "title": "Course published",
-  "body": "A new course is available in EduFlow.",
-  "channels": ["database"],
-  "variables": ["courseTitle"],
-  "isActive": true
-}
-```
-
-### PUT `/notification-templates/{notification_template}`
-
-Same body as create.
-
-### DELETE `/notification-templates/{notification_template}`
-
-No body.
-
-## Reports
-
-### GET `/reports/learning/overview`
-
-```json
-{
-  "coursesTotal": 1,
-  "publishedCourses": 1,
-  "categoriesTotal": 2,
-  "enrollmentsTotal": 1,
-  "activeEnrollments": 0,
-  "completedLessons": 1,
-  "assessmentsTotal": 1,
-  "attemptsTotal": 1,
-  "averageAssessmentScore": 100
-}
-```
-
-### GET `/reports/courses/{course}`
-
-```json
-{
-  "course": {
-    "id": 1,
-    "title": "Foundations of Maths",
-    "status": "published",
-    "visibility": "public",
-    "lessonsCount": 1,
-    "studentsCount": 1,
-    "averageRating": "0.00",
-    "ratingsCount": 0
-  },
-  "enrollments": {
-    "total": 1,
-    "active": 0,
-    "completed": 1
-  },
-  "lessons": {
-    "total": 1,
-    "completed": 1
-  },
-  "assessments": {
-    "total": 1,
-    "attempts": 1
-  }
-}
-```
-
-### GET `/reports/users/{user}/progress`
-
-```json
-{
-  "user": {
-    "id": 2,
-    "name": "EduFlow Student",
-    "email": "student@eduflow.local"
-  },
-  "enrollmentsTotal": 1,
-  "activeEnrollments": 0,
-  "completedEnrollments": 1,
-  "completedLessons": 1,
-  "attemptsTotal": 1,
-  "averageAssessmentScore": 100
-}
-```
-
-### GET `/reports/assessments/{assessment}`
-
-```json
-{
-  "assessment": {
-    "id": 1,
-    "title": "Demo Quiz",
-    "status": "published",
-    "passingScore": 60
-  },
-  "attemptsTotal": 1,
-  "submittedAttempts": 1,
-  "passRate": 100,
-  "averageScore": 100,
-  "maxAttempts": 3
-}
-```
-
-### POST `/reports/learning/export`
-
-```json
-{
-  "generatedAt": "2026-06-06T18:00:00.000000Z",
-  "overview": {
-    "coursesTotal": 1,
-    "publishedCourses": 1,
-    "categoriesTotal": 2,
-    "enrollmentsTotal": 1,
-    "activeEnrollments": 0,
-    "completedLessons": 1,
-    "assessmentsTotal": 1,
-    "attemptsTotal": 1,
-    "averageAssessmentScore": 100
-  }
-}
-```
-
-## Notes for Clients
-
-- Use `Authorization: Bearer <token>` after login or register.
-- For media endpoints, send `multipart/form-data`.
-- For lists, use `perPage`, `search`, `filter[...]`, and `sort` where supported.
-- No role-based behavior is available in this API contract.
+Management functionality should be implemented in an authenticated admin surface rather than mixed into the student API.

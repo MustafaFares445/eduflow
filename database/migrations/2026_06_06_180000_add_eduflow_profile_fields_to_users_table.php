@@ -11,10 +11,13 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('users', function (Blueprint $table): void {
-            $table->string('phone')->nullable()->after('password');
-            $table->text('bio')->nullable()->after('phone');
+            $table->string('phone', 50)->nullable()->unique()->after('password');
+            $table->timestamp('phone_verified_at')->nullable()->after('phone');
+            $table->string('verification_code')->nullable()->after('phone_verified_at');
+            $table->timestamp('verification_code_expires_at')->nullable()->after('verification_code');
+            $table->text('bio')->nullable()->after('verification_code_expires_at');
             $table->string('timezone')->nullable()->after('bio');
-            $table->string('locale')->default('en')->after('timezone');
+            $table->string('locale')->default('ar')->after('timezone');
             $table->boolean('is_active')->default(true)->after('locale');
             $table->timestamp('last_login_at')->nullable()->after('is_active');
         });
@@ -25,6 +28,9 @@ return new class extends Migration
         Schema::table('users', function (Blueprint $table): void {
             $table->dropColumn([
                 'phone',
+                'phone_verified_at',
+                'verification_code',
+                'verification_code_expires_at',
                 'bio',
                 'timezone',
                 'locale',
