@@ -23,10 +23,18 @@ class User extends Authenticatable implements HasMedia
 
     protected $guarded = [];
 
+    protected $hidden = [
+        'password',
+        'remember_token',
+        'verification_code',
+    ];
+
     protected function casts(): array
     {
         return [
             'email_verified_at' => 'datetime',
+            'phone_verified_at' => 'datetime',
+            'verification_code_expires_at' => 'datetime',
             'last_login_at' => 'datetime',
             'is_active' => 'boolean',
             'password' => 'hashed',
@@ -70,6 +78,6 @@ class User extends Authenticatable implements HasMedia
 
     public function registerMediaConversions(?Media $media = null): void
     {
-        //
+        // Add optimized avatar conversions when image processing is configured.
     }
 }
