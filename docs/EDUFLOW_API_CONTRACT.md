@@ -4,7 +4,7 @@ Base URL: `/api/v1`
 
 Authentication: Laravel Sanctum bearer token.
 
-This is the complete contract for the current Flutter student application and the admin account-approval flow.
+This contract contains only the REST endpoints required by the Flutter student application. Administrator account approval and rejection are **not API endpoints**. They will be implemented later as actions in the Filament dashboard.
 
 ## Request conventions
 
@@ -15,13 +15,13 @@ Authorization: Bearer <token>
 ```
 
 - JSON fields use camelCase.
-- `full_name`, `telegram_username`, `device_name`, and `rejection_reason` are accepted as compatibility aliases.
+- Compatibility aliases accepted by the API include `full_name`, `telegram_username`, and `device_name`.
 - Validation errors return HTTP `422`.
-- Missing/inaccessible records return HTTP `404`.
+- Missing or inaccessible records return HTTP `404`.
 - Pending, rejected, or expired access returns HTTP `403`.
-- Collections use Laravel pagination: `data`, `links`, and `meta`.
+- Collections use Laravel pagination with `data`, `links`, and `meta`.
 
-## Complete endpoint list
+## Complete Flutter endpoint list
 
 ### Public authentication
 
@@ -69,20 +69,12 @@ GET   /me/notification-preferences
 PATCH /me/notification-preferences
 ```
 
-### Admin account-review routes
-
-```text
-GET   /admin/users/pending
-PATCH /admin/users/{user}/approve
-PATCH /admin/users/{user}/reject
-```
-
 ## Account lifecycle
 
 ```text
 registration
   -> OTP verification
-  -> pending admin review
+  -> pending Filament administrator review
   -> approved OR rejected
 ```
 
@@ -94,9 +86,13 @@ approved
 rejected
 ```
 
-After OTP verification, the API returns a token while the user remains pending. Flutter uses the token to check `/me/account-status` but cannot access approved-only routes.
+After OTP verification, the API returns a Sanctum token while the account remains pending. Flutter uses this token to request `/me/account-status` but cannot access approved-only routes.
+
+Approval and rejection will be managed from the Filament dashboard by updating the account status and optional rejection reason. No `/admin/*` account-approval API endpoints exist.
 
 ## User response
+
+Authentication and profile responses use the following user properties:
 
 ```json
 {
@@ -112,8 +108,6 @@ After OTP verification, the API returns a token while the user remains pending. 
   "isRejected": false,
   "rejectionReason": null,
   "accountReviewedAt": null,
-  "accountReviewedBy": null,
-  "isAdmin": false,
   "bio": null,
   "timezone": "Asia/Damascus",
   "locale": "ar",
@@ -125,11 +119,13 @@ After OTP verification, the API returns a token while the user remains pending. 
 }
 ```
 
-Telegram usernames are normalized to lowercase and stored without `@`.
+Telegram usernames are normalized to lowercase and stored without the leading `@`.
 
 ## Authentication
 
 ### POST `/auth/register`
+
+Creates an unverified account with `accountStatus: pending` and generates a six-digit OTP.
 
 Request:
 
@@ -151,13 +147,13 @@ full_name -> fullName
 telegram_username -> telegramUsername
 ```
 
-Telegram username rules:
+Telegram username validation:
 
 ```text
 required
 unique
 3-64 characters
-letters, numbers, underscores
+letters, numbers, and underscores only
 normalized to lowercase
 leading @ removed
 ```
@@ -182,6 +178,8 @@ Response: HTTP `201`
 `debugOtp` is returned only in `local` and `testing`. Production must connect an SMS provider.
 
 ### POST `/auth/verify-otp`
+
+Request:
 
 ```json
 {
@@ -223,10 +221,12 @@ Response fields:
 message
 nextAction = verify_phone
 verificationExpiresAt
-debugOtp in local/testing
+debugOtp in local/testing only
 ```
 
 ### POST `/auth/login`
+
+Request:
 
 ```json
 {
@@ -245,7 +245,7 @@ message
 nextAction
 ```
 
-`nextAction` values:
+Possible `nextAction` values:
 
 ```text
 open_app              approved account
@@ -271,11 +271,11 @@ Unverified or inactive accounts cannot log in.
 
 ### POST `/auth/logout`
 
-Revokes the current token.
+Revokes the current access token.
 
 ### POST `/auth/logout-all`
 
-Revokes all tokens belonging to the user.
+Revokes every token belonging to the user.
 
 ## Profile and approval status
 
@@ -285,15 +285,15 @@ Returns the authenticated user resource.
 
 ### GET `/me/account-status`
 
-Returns the authenticated user resource and is used by splash/pending/rejection screens.
+Returns the authenticated user resource for splash, pending, and rejection screens.
 
 Flutter routing:
 
 ```text
 accountStatus = approved -> main screen
-accountStatus = pending  -> pending screen
+accountStatus = pending  -> pending approval screen
 accountStatus = rejected -> rejection screen using rejectionReason
-HTTP 401                 -> clear token and login
+HTTP 401                 -> clear token and open login
 ```
 
 ### PATCH `/me`
@@ -310,9 +310,12 @@ Editable fields:
 }
 ```
 
+Rules:
+
 - Phone is not editable through this endpoint.
-- Changing Telegram username resets a non-admin account to `pending` and clears the previous review/rejection data.
-- The updated account must be reviewed again by an admin.
+- Changing Telegram username resets a non-admin account to `pending`.
+- Previous review and rejection data are cleared after a Telegram username change.
+- The account must be reviewed again later through the Filament dashboard.
 
 ### POST `/me/avatar`
 
@@ -322,9 +325,9 @@ Multipart form-data:
 avatar: <image>
 ```
 
-## Approval middleware response
+## Approved-account middleware response
 
-Pending user accessing an approved-only route:
+Pending account accessing an approved-only route:
 
 ```json
 {
@@ -334,7 +337,7 @@ Pending user accessing an approved-only route:
 }
 ```
 
-Rejected user:
+Rejected account:
 
 ```json
 {
@@ -344,82 +347,27 @@ Rejected user:
 }
 ```
 
-Flutter must redirect based on `accountStatus` when receiving this HTTP `403` response.
+Flutter must redirect using `accountStatus` when it receives this HTTP `403` response.
 
-## Admin approval API
+## Future Filament approval workflow
 
-These routes require an authenticated user with `isAdmin: true`.
+Account review will be implemented in the Filament dashboard, not through REST endpoints.
 
-### GET `/admin/users/pending`
+The future Filament interface should provide:
 
-Query parameters:
+- A users table filtered by `accountStatus = pending`.
+- Search by name, phone, and Telegram username.
+- View user registration and Telegram details.
+- Approve action that sets `accountStatus = approved`.
+- Reject action that sets `accountStatus = rejected` and requires `rejectionReason`.
+- Store `accountReviewedAt` and the reviewing dashboard administrator internally.
+- Prevent reviewing admin accounts or accounts that are no longer pending.
 
-```text
-perPage
-search
-```
-
-`search` checks:
-
-```text
-name
-phone
-telegramUsername
-```
-
-Returns a paginated list of pending non-admin users.
-
-### PATCH `/admin/users/{user}/approve`
-
-No body is required.
-
-```json
-{
-  "data": {
-    "id": 10,
-    "accountStatus": "approved",
-    "isApproved": true,
-    "rejectionReason": null,
-    "accountReviewedAt": "2026-07-24T12:30:00.000000Z",
-    "accountReviewedBy": 1
-  },
-  "message": "User account approved successfully."
-}
-```
-
-### PATCH `/admin/users/{user}/reject`
-
-```json
-{
-  "rejectionReason": "Telegram account could not be verified."
-}
-```
-
-Alias:
-
-```text
-rejection_reason -> rejectionReason
-```
-
-Response:
-
-```json
-{
-  "data": {
-    "id": 10,
-    "accountStatus": "rejected",
-    "isRejected": true,
-    "rejectionReason": "Telegram account could not be verified."
-  },
-  "message": "User account rejected successfully."
-}
-```
-
-Only pending non-admin accounts can be approved or rejected.
+Flutter only observes the result through `GET /me/account-status`.
 
 ## Public catalog
 
-Public catalog endpoints return metadata only. Paid media and assessment answers are never exposed publicly.
+Public catalog endpoints return metadata only. Paid lesson media and assessment answers are never exposed publicly.
 
 ### GET `/catalog/categories`
 
@@ -464,7 +412,7 @@ Returns public course metadata only. Modules, paid lessons, media URLs, and asse
 
 ### GET `/me/learning-summary`
 
-Requires approved account.
+Requires an approved account.
 
 ```json
 {
@@ -482,7 +430,7 @@ Requires approved account.
 
 ### POST `/enrollment-codes/redeem`
 
-Requires approved account. Rate limit: ten requests per minute.
+Requires an approved account. Rate limit: ten requests per minute.
 
 ```json
 {
@@ -508,7 +456,7 @@ Response:
 }
 ```
 
-Redemption is transactional and idempotent for the same user/code.
+Redemption is transactional and idempotent for the same user and code.
 
 ## My courses
 
@@ -516,7 +464,7 @@ Redemption is transactional and idempotent for the same user/code.
 
 Returns paginated enrollments ordered by recent access.
 
-Expired enrollments return:
+Expired enrollment properties:
 
 ```text
 status = expired
@@ -529,7 +477,7 @@ Returns an enrollment only when it belongs to the authenticated user.
 
 ### GET `/me/courses/{course}`
 
-Returns the personalized course payload needed by course details, video playback, files, and progress screens.
+Returns the personalized course payload required by course details, video playback, downloads, and progress screens.
 
 ```json
 {
@@ -591,7 +539,7 @@ Returns:
 
 ### PATCH `/lessons/{lesson}/progress`
 
-Requires an approved account and active course enrollment.
+Requires an approved account and an active course enrollment.
 
 ```json
 {
@@ -611,7 +559,7 @@ completed
 Rules:
 
 - Progress is clamped between zero and lesson duration.
-- Reaching lesson duration marks it completed.
+- Reaching lesson duration marks the lesson completed.
 - Enrollment progress and last-accessed time are recalculated.
 - There is no separate complete endpoint; use `status: completed`.
 
@@ -660,19 +608,19 @@ During splash:
 ```text
 stored token -> GET /me/account-status
 approved     -> main screen
-pending      -> pending screen
+pending      -> pending approval screen
 rejected     -> rejection screen
-401          -> clear token and login
+401          -> clear token and open login
 ```
 
 On approved-only HTTP `403`:
 
 ```text
-pending  -> pending screen
+pending  -> pending approval screen
 rejected -> rejection screen with rejectionReason
 ```
 
-## Demo accounts
+## Demo data
 
 After:
 
@@ -685,22 +633,20 @@ Approved student phone: +963999999999
 Approved student Telegram: eduflow_student
 Approved student password: password123
 
-Admin phone: +963988888888
-Admin Telegram: eduflow_admin
-Admin password: password123
-
 Demo QR code: EDUFLOW-DEMO-2026
 ```
 
-## Deliberately removed mobile routes
+## Deliberately excluded REST endpoints
 
 The Flutter API does not expose:
 
-- Course/category/module/lesson management CRUD
+- Account approval or rejection endpoints
+- Filament/dashboard administration endpoints
+- Course, category, module, or lesson management CRUD
 - Course and lesson media-management routes
 - Assessment authoring, question management, attempts, results, or grading
 - Notification-template CRUD
 - Reports and exports
 - Direct unaudited enrollment routes
 
-These belong in a separate administrative content-management surface.
+All administrator functionality belongs in the Filament dashboard.
