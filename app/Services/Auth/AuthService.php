@@ -7,6 +7,7 @@ namespace App\Services\Auth;
 use App\Data\Auth\LoginData;
 use App\Data\Auth\RegisterData;
 use App\Data\Auth\VerifyOtpData;
+use App\Enums\Auth\AccountStatus;
 use App\Models\User;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
@@ -24,11 +25,17 @@ final class AuthService
             'email' => $emailKey.'@phone.eduflow.local',
             'password' => $data->password,
             'phone' => $phone,
+            'telegram_username' => $this->normalizeTelegramUsername($data->telegramUsername),
             'phone_verified_at' => null,
             'verification_code' => Hash::make($otp),
             'verification_code_expires_at' => now()->addMinutes(10),
+            'account_status' => AccountStatus::Pending,
+            'account_reviewed_at' => null,
+            'account_reviewed_by' => null,
+            'rejection_reason' => null,
             'locale' => $data->locale ?? 'ar',
             'timezone' => $data->timezone,
+            'is_admin' => false,
             'is_active' => true,
         ]);
 
@@ -130,6 +137,11 @@ final class AuthService
     private function normalizePhone(string $phone): string
     {
         return preg_replace('/\s+/', '', trim($phone)) ?: trim($phone);
+    }
+
+    private function normalizeTelegramUsername(string $username): string
+    {
+        return ltrim(trim($username), '@');
     }
 
     private function generateOtp(): string
