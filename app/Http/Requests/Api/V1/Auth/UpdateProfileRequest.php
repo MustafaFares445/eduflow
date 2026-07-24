@@ -16,10 +16,21 @@ final class UpdateProfileRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
+        $updates = [];
+
         if ($this->has('fullName') || $this->has('full_name')) {
-            $this->merge([
-                'name' => $this->input('fullName', $this->input('full_name')),
-            ]);
+            $updates['name'] = $this->input('fullName', $this->input('full_name'));
+        }
+
+        if ($this->has('telegramUsername') || $this->has('telegram_username')) {
+            $updates['telegramUsername'] = ltrim(trim((string) $this->input(
+                'telegramUsername',
+                $this->input('telegram_username')
+            )), '@');
+        }
+
+        if ($updates !== []) {
+            $this->merge($updates);
         }
     }
 
@@ -32,6 +43,14 @@ final class UpdateProfileRequest extends FormRequest
                 'string',
                 'max:50',
                 Rule::unique('users', 'phone')->ignore($this->user()?->id),
+            ],
+            'telegramUsername' => [
+                'sometimes',
+                'string',
+                'min:3',
+                'max:64',
+                'regex:/^[A-Za-z0-9_]+$/',
+                Rule::unique('users', 'telegram_username')->ignore($this->user()?->id),
             ],
             'bio' => ['nullable', 'string'],
             'timezone' => ['nullable', 'string', 'max:64'],
