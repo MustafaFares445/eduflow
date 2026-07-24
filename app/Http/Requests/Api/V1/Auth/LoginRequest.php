@@ -13,10 +13,17 @@ final class LoginRequest extends FormRequest
         return true;
     }
 
+    protected function prepareForValidation(): void
+    {
+        $this->merge([
+            'deviceName' => $this->input('deviceName', $this->input('device_name')),
+        ]);
+    }
+
     public function rules(): array
     {
         return [
-            'email' => ['required', 'email'],
+            'phone' => ['required', 'string', 'max:50'],
             'password' => ['required', 'string'],
             'deviceName' => ['nullable', 'string', 'max:255'],
         ];
