@@ -9,11 +9,10 @@ use Spatie\LaravelData\Data;
 final class RegisterData extends Data
 {
     public function __construct(
-        public string $name,
-        public string $email,
+        public string $fullName,
+        public string $phone,
         public string $password,
-        public ?string $phone = null,
-        public ?string $locale = null,
+        public ?string $locale = 'ar',
         public ?string $timezone = null,
     ) {}
 }
