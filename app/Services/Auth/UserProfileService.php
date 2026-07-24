@@ -20,6 +20,7 @@ final class UserProfileService
         $user->fill(array_filter([
             'name' => $data->name,
             'phone' => $data->phone,
+            'telegram_username' => $data->telegramUsername,
             'bio' => $data->bio,
             'timezone' => $data->timezone,
             'locale' => $data->locale,
