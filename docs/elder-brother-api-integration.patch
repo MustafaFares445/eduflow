@@ -1,0 +1,187 @@
+diff --git a/lib/core/app_config.dart b/lib/core/app_config.dart
+--- a/lib/core/app_config.dart
++++ b/lib/core/app_config.dart
+@@ -3,7 +3,10 @@ class AppConfig {
+   const AppConfig._();
+ 
+   static const String appName = 'Elder Brother';
+   static const String orgIdentifier = 'com.elderbrother.app';
+-  static const String baseUrl = 'https://api.example.com';
++  static const String baseUrl = String.fromEnvironment(
++    'API_BASE_URL',
++    defaultValue: 'http://10.0.2.2:8000/api/v1',
++  );
+ }
+diff --git a/lib/features/auth/data/source/auth_remote_data_source.dart b/lib/features/auth/data/source/auth_remote_data_source.dart
+--- a/lib/features/auth/data/source/auth_remote_data_source.dart
++++ b/lib/features/auth/data/source/auth_remote_data_source.dart
+@@ -19,7 +19,7 @@ class AuthRemoteDataSource with HandlingApiManager {
+   Future<LoginModel> login(LoginParams params) {
+     return wrapHandlingApi(
+       tryCall: () => dioNetwork.postData(
+-        endPoint: '',
++        endPoint: 'auth/login',
+         data: params.getBody(),
+         params: params.getParams(),
+       ),
+@@ -30,7 +30,7 @@ class AuthRemoteDataSource with HandlingApiManager {
+   Future<RegisterModel> register(RegisterParams params) {
+     return wrapHandlingApi(
+       tryCall: () => dioNetwork.postData(
+-        endPoint: '',
++        endPoint: 'auth/register',
+         data: params.getBody(),
+         params: params.getParams(),
+       ),
+@@ -41,7 +41,7 @@ class AuthRemoteDataSource with HandlingApiManager {
+   Future<VerifyOtpModel> verifyOtp(VerifyOtpParams params) {
+     return wrapHandlingApi(
+       tryCall: () => dioNetwork.postData(
+-        endPoint: '',
++        endPoint: 'auth/verify-otp',
+         data: params.getBody(),
+         params: params.getParams(),
+       ),
+diff --git a/lib/features/auth/view/login_screen.dart b/lib/features/auth/view/login_screen.dart
+--- a/lib/features/auth/view/login_screen.dart
++++ b/lib/features/auth/view/login_screen.dart
+@@ -9,6 +9,7 @@ import 'package:toastification/toastification.dart';
+ import '../../../core/di/injection.dart';
+ import '../../../core/theme/app_colors.dart';
+ import '../../../core/theme/app_theme.dart';
++import '../domain/usecases/login_use_case.dart';
+ import 'manager/bloc/auth_bloc.dart';
+ import 'widgets/auth_form_fields.dart';
+@@ -33,9 +34,17 @@ class _LoginScreenState extends State<LoginScreen> {
+     super.dispose();
+   }
+ 
+-  // TODO(dev): Restore API login via AuthBloc when backend is ready.
+-  void _submit() {
+-    context.pushRouteAndRemoveUntil('/main');
++  void _submit(BuildContext context) {
++    if (!(_formKey.currentState?.validate() ?? false)) return;
++
++    context.read<AuthBloc>().add(
++      LoginEvent(
++        params: LoginParams(
++          phone: _phoneController.text.trim(),
++          password: _passwordController.text,
++        ),
++      ),
++    );
+   }
+@@ -154,7 +163,7 @@ class _LoginScreenState extends State<LoginScreen> {
+                        const SizedBox(height: 16),
+                        FilledButton(
+-                         onPressed: _submit,
++                         onPressed: () => _submit(context),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+diff --git a/lib/features/auth/view/register_screen.dart b/lib/features/auth/view/register_screen.dart
+--- a/lib/features/auth/view/register_screen.dart
++++ b/lib/features/auth/view/register_screen.dart
+@@ -9,6 +9,7 @@ import 'package:toastification/toastification.dart';
+ import '../../../core/di/injection.dart';
+ import '../../../core/theme/app_colors.dart';
+ import '../../../core/theme/app_theme.dart';
++import '../domain/usecases/register_use_case.dart';
+ import 'manager/bloc/auth_bloc.dart';
+ import 'widgets/auth_form_fields.dart';
+@@ -36,9 +37,26 @@ class _RegisterScreenState extends State<RegisterScreen> {
+     super.dispose();
+   }
+ 
+-  // TODO(dev): Restore API register via AuthBloc when backend is ready.
+-  void _submit() {
+-    context.pushRouteAndRemoveUntil('/main');
++  void _submit(BuildContext context) {
++    if (!(_formKey.currentState?.validate() ?? false)) return;
++    if (!_agreeTerms) {
++      AppToast.showToast(
++        context: context,
++        message: 'auth.agree_terms'.tr(),
++        type: ToastificationType.warning,
++      );
++      return;
++    }
++
++    context.read<AuthBloc>().add(
++      RegisterEvent(
++        params: RegisterParams(
++          fullName: _nameController.text.trim(),
++          phone: _phoneController.text.trim(),
++          password: _passwordController.text,
++        ),
++      ),
++    );
+   }
+@@ -176,7 +194,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
+                        const SizedBox(height: 16),
+                        FilledButton(
+-                         onPressed: _submit,
++                         onPressed: () => _submit(context),
+                          child: Text('auth.create_account_btn'.tr()),
+                        ),
+diff --git a/lib/features/auth/domain/auth_session.dart b/lib/features/auth/domain/auth_session.dart
+--- a/lib/features/auth/domain/auth_session.dart
++++ b/lib/features/auth/domain/auth_session.dart
+@@ -30,6 +30,10 @@ abstract final class AuthSession {
+     await SharedPreferencesHelper.saveData(key: tokenKey, value: token);
+   }
+ 
++  static Future<void> clearToken() async {
++    await SharedPreferencesHelper.removeData(key: tokenKey);
++  }
++
+   static Future<void> setNeedsVerify({required String phone}) async {
+     await SharedPreferencesHelper.saveData(key: needsVerifyKey, value: true);
+     await SharedPreferencesHelper.saveData(key: verifyPhoneKey, value: phone);
+diff --git a/lib/features/qr_scanner/view/qr_scanner_tab_screen.dart b/lib/features/qr_scanner/view/qr_scanner_tab_screen.dart
+--- a/lib/features/qr_scanner/view/qr_scanner_tab_screen.dart
++++ b/lib/features/qr_scanner/view/qr_scanner_tab_screen.dart
+@@ -8,6 +8,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
+ import 'package:toastification/toastification.dart';
+ 
++import '../../../core/di/injection.dart';
+ import '../../../core/theme/app_colors.dart';
+ import '../../../core/theme/app_theme.dart';
+ import '../../main/navigation/main_tab_navigation.dart';
+@@ -71,17 +72,31 @@ class _QrScannerTabScreenState extends State<QrScannerTabScreen>
+     _handlingScan = true;
+     await _scannerController.stop();
+ 
+-    if (!mounted) return;
+-    AppToast.showToast(
+-      context: context,
+-      message: 'qr_scanner.scan_success'.tr(args: [raw]),
+-      type: ToastificationType.success,
+-    );
++    try {
++      await getIt<DioNetwork>().postData(
++        endPoint: 'enrollment-codes/redeem',
++        data: <String, dynamic>{'code': raw},
++      );
++
++      if (!mounted) return;
++      AppToast.showToast(
++        context: context,
++        message: 'qr_scanner.scan_success'.tr(args: [raw]),
++        type: ToastificationType.success,
++      );
++      MainTabNavigation.instance.jumpToTab(1);
++    } catch (error) {
++      if (!mounted) return;
++      AppToast.showToast(
++        context: context,
++        message: error.toString(),
++        type: ToastificationType.error,
++      );
++    }
+ 
+     await Future<void>.delayed(const Duration(milliseconds: 1200));
+     _handlingScan = false;
+     if (mounted) {
+       await _scannerController.start();
+     }
+   }
