@@ -14,6 +14,13 @@ final class CourseResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
+        $cover = $this->relationLoaded('media')
+            ? $this->media->firstWhere('collection_name', 'cover')
+            : null;
+        $introVideo = $this->relationLoaded('media')
+            ? $this->media->firstWhere('collection_name', 'intro_video')
+            : null;
+
         return [
             'id' => $this->id,
             'categoryId' => $this->category_id,
@@ -32,8 +39,10 @@ final class CourseResource extends JsonResource
             'averageRating' => $this->average_rating,
             'ratingsCount' => (int) $this->ratings_count,
             'publishedAt' => $this->published_at?->toISOString(),
+            'coverUrl' => $cover?->getUrl(),
+            'introVideoUrl' => $introVideo?->getUrl(),
             'category' => $this->relationLoaded('category') ? CourseCategoryResource::make($this->category) : null,
-            'instructor' => $this->relationLoaded('instructor') ? \App\Http\Resources\Api\V1\UserResource::make($this->instructor) : null,
+            'instructor' => $this->relationLoaded('instructor') ? UserResource::make($this->instructor) : null,
             'modules' => $this->relationLoaded('modules') ? CourseModuleResource::collection($this->modules) : null,
             'lessons' => $this->relationLoaded('lessons') ? LessonResource::collection($this->lessons) : null,
             'assessments' => $this->relationLoaded('assessments') ? AssessmentResource::collection($this->assessments) : null,
