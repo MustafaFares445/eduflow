@@ -26,21 +26,25 @@ Route::prefix('v1')->group(function (): void {
         Route::post('auth/logout-all', [AuthController::class, 'logoutAll']);
 
         Route::get('me', [ProfileController::class, 'show']);
+        Route::get('me/account-status', [ProfileController::class, 'show']);
         Route::patch('me', [ProfileController::class, 'update']);
         Route::post('me/avatar', [ProfileController::class, 'avatar']);
-        Route::get('me/learning-summary', [StudentLearningController::class, 'summary']);
 
-        Route::get('me/enrollments', [EnrollmentController::class, 'mine']);
-        Route::get('me/enrollments/{enrollment}', [EnrollmentController::class, 'showMine']);
-        Route::get('me/courses/{course}', [StudentLearningController::class, 'course']);
-        Route::post('enrollment-codes/redeem', [EnrollmentCodeController::class, 'redeem'])->middleware('throttle:10,1');
+        Route::middleware('account.approved')->group(function (): void {
+            Route::get('me/learning-summary', [StudentLearningController::class, 'summary']);
 
-        Route::patch('lessons/{lesson}/progress', [LessonProgressController::class, 'update']);
+            Route::get('me/enrollments', [EnrollmentController::class, 'mine']);
+            Route::get('me/enrollments/{enrollment}', [EnrollmentController::class, 'showMine']);
+            Route::get('me/courses/{course}', [StudentLearningController::class, 'course']);
+            Route::post('enrollment-codes/redeem', [EnrollmentCodeController::class, 'redeem'])->middleware('throttle:10,1');
 
-        Route::get('notifications', [NotificationController::class, 'index']);
-        Route::patch('notifications/{notification}/read', [NotificationController::class, 'read']);
-        Route::patch('notifications/read-all', [NotificationController::class, 'readAll']);
-        Route::get('me/notification-preferences', [NotificationPreferenceController::class, 'show']);
-        Route::patch('me/notification-preferences', [NotificationPreferenceController::class, 'update']);
+            Route::patch('lessons/{lesson}/progress', [LessonProgressController::class, 'update']);
+
+            Route::get('notifications', [NotificationController::class, 'index']);
+            Route::patch('notifications/{notification}/read', [NotificationController::class, 'read']);
+            Route::patch('notifications/read-all', [NotificationController::class, 'readAll']);
+            Route::get('me/notification-preferences', [NotificationPreferenceController::class, 'show']);
+            Route::patch('me/notification-preferences', [NotificationPreferenceController::class, 'update']);
+        });
     });
 });

@@ -11,6 +11,7 @@ final class RegisterData extends Data
     public function __construct(
         public string $fullName,
         public string $phone,
+        public string $telegramUsername,
         public string $password,
         public ?string $locale = 'ar',
         public ?string $timezone = null,

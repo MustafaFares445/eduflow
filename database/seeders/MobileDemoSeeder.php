@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Database\Seeders;
 
+use App\Enums\Auth\AccountStatus;
 use App\Models\Course;
 use App\Models\EnrollmentCode;
 use App\Models\User;
@@ -15,12 +16,20 @@ final class MobileDemoSeeder extends Seeder
     {
         User::query()->where('email', 'student@eduflow.local')->update([
             'phone' => '+963999999999',
+            'telegram_username' => 'eduflow_student',
             'phone_verified_at' => now(),
+            'account_status' => AccountStatus::Approved->value,
+            'account_reviewed_at' => now(),
+            'is_admin' => false,
         ]);
 
         User::query()->where('email', 'instructor@eduflow.local')->update([
             'phone' => '+963988888888',
+            'telegram_username' => 'eduflow_admin',
             'phone_verified_at' => now(),
+            'account_status' => AccountStatus::Approved->value,
+            'account_reviewed_at' => now(),
+            'is_admin' => true,
         ]);
 
         $course = Course::query()->where('slug', 'foundations-of-maths')->first();
