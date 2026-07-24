@@ -129,8 +129,11 @@ final class StudentLearningService
                 ?->id;
         }
 
+        $courseForResource = clone $course;
+        $courseForResource->unsetRelation('modules');
+
         return [
-            'course' => CourseResource::make($course)->resolve(),
+            'course' => CourseResource::make($courseForResource)->resolve(),
             'enrollment' => EnrollmentResource::make($enrollment)->resolve(),
             'summary' => [
                 'videoCount' => $videoCount,
