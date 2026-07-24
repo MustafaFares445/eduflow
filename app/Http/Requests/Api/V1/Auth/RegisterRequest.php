@@ -16,10 +16,10 @@ final class RegisterRequest extends FormRequest
     protected function prepareForValidation(): void
     {
         $phone = preg_replace('/\s+/', '', trim((string) $this->input('phone')));
-        $telegramUsername = ltrim(trim((string) $this->input(
+        $telegramUsername = strtolower(ltrim(trim((string) $this->input(
             'telegramUsername',
             $this->input('telegram_username')
-        )), '@');
+        )), '@'));
 
         $this->merge([
             'fullName' => $this->input('fullName', $this->input('full_name')),
@@ -33,7 +33,7 @@ final class RegisterRequest extends FormRequest
         return [
             'fullName' => ['required', 'string', 'max:255'],
             'phone' => ['required', 'string', 'max:50', 'unique:users,phone'],
-            'telegramUsername' => ['required', 'string', 'min:3', 'max:64', 'regex:/^[A-Za-z0-9_]+$/', 'unique:users,telegram_username'],
+            'telegramUsername' => ['required', 'string', 'min:3', 'max:64', 'regex:/^[a-z0-9_]+$/', 'unique:users,telegram_username'],
             'password' => ['required', 'string', 'min:8'],
             'locale' => ['nullable', 'string', 'max:10'],
             'timezone' => ['nullable', 'string', 'max:64'],
