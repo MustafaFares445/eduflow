@@ -17,7 +17,7 @@ final class EnrollmentService
         private readonly CourseService $courseService,
     ) {}
 
-    public function enroll(User $user, Course $course): Enrollment
+    public function activate(User $user, Course $course, ?int $accessDays = null): Enrollment
     {
         $enrollment = Enrollment::withTrashed()->firstOrNew([
             'user_id' => $user->id,
@@ -30,15 +30,21 @@ final class EnrollmentService
 
         $enrollment->forceFill([
             'status' => EnrollmentStatus::Active,
-            'progress_percentage' => 0,
+            'progress_percentage' => $enrollment->progress_percentage ?? 0,
             'enrolled_at' => $enrollment->enrolled_at ?? now(),
             'completed_at' => null,
             'last_accessed_at' => now(),
+            'expires_at' => $accessDays === null ? null : now()->addDays($accessDays),
         ])->save();
 
         $this->courseService->syncStatistics($course);
 
-        return $enrollment->fresh(['user', 'course']);
+        return $enrollment->fresh(['user', 'course.category', 'course.media']);
+    }
+
+    public function enroll(User $user, Course $course): Enrollment
+    {
+        return $this->activate($user, $course);
     }
 
     public function mine(User $user, int $perPage = 20): LengthAwarePaginator
@@ -46,7 +52,7 @@ final class EnrollmentService
         return Enrollment::query()
             ->where('user_id', $user->id)
             ->with(['course.category', 'course.media'])
-            ->latest()
+            ->latest('last_accessed_at')
             ->paginate($perPage)
             ->withQueryString();
     }
@@ -56,6 +62,18 @@ final class EnrollmentService
         abort_unless($enrollment->user_id === $user->id, 404);
 
         return $enrollment->load(['user', 'course.category', 'course.media']);
+    }
+
+    public function activeEnrollment(User $user, Course $course): Enrollment
+    {
+        $enrollment = Enrollment::query()
+            ->where('user_id', $user->id)
+            ->where('course_id', $course->id)
+            ->firstOrFail();
+
+        abort_if($enrollment->isExpired(), 403, __('Course access has expired.'));
+
+        return $enrollment;
     }
 
     public function syncProgress(Enrollment $enrollment): Enrollment
