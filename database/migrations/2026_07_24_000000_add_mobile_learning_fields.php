@@ -28,10 +28,21 @@ return new class extends Migration
             $table->index(['course_id', 'is_active']);
             $table->index('expires_at');
         });
+
+        Schema::create('enrollment_code_redemptions', function (Blueprint $table): void {
+            $table->id();
+            $table->foreignId('enrollment_code_id')->constrained('enrollment_codes')->cascadeOnDelete();
+            $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
+            $table->foreignId('enrollment_id')->constrained('enrollments')->cascadeOnDelete();
+            $table->timestamp('redeemed_at');
+            $table->timestamps();
+            $table->unique(['enrollment_code_id', 'user_id']);
+        });
     }
 
     public function down(): void
     {
+        Schema::dropIfExists('enrollment_code_redemptions');
         Schema::dropIfExists('enrollment_codes');
 
         Schema::table('enrollments', function (Blueprint $table): void {
