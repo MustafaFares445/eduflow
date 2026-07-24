@@ -141,7 +141,7 @@ final class AuthService
 
     private function normalizeTelegramUsername(string $username): string
     {
-        return ltrim(trim($username), '@');
+        return strtolower(ltrim(trim($username), '@'));
     }
 
     private function generateOtp(): string
