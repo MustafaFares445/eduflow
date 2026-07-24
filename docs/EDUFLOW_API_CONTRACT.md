@@ -2,28 +2,26 @@
 
 Base URL: `/api/v1`
 
-Authentication: Laravel Sanctum bearer tokens.
+Authentication: Laravel Sanctum bearer token.
 
-This document is the complete API contract required by the current Flutter student application, including phone authentication, OTP verification, Telegram username, administrator account approval, catalog browsing, QR course activation, course progress, profile statistics, and notifications.
+This is the complete contract for the current Flutter student application and the admin account-approval flow.
 
-## Conventions
-
-- Request and response properties use camelCase.
-- Backward-compatible Flutter aliases such as `full_name` and `telegram_username` are accepted where documented.
-- Protected routes require:
+## Request conventions
 
 ```http
-Authorization: Bearer <token>
 Accept: application/json
 Content-Type: application/json
+Authorization: Bearer <token>
 ```
 
-- Collection responses use Laravel pagination with `data`, `links`, and `meta`.
-- Validation failures use HTTP `422`.
-- Missing or inaccessible records use HTTP `404`.
-- Pending, rejected, or expired access uses HTTP `403`.
+- JSON fields use camelCase.
+- `full_name`, `telegram_username`, `device_name`, and `rejection_reason` are accepted as compatibility aliases.
+- Validation errors return HTTP `422`.
+- Missing/inaccessible records return HTTP `404`.
+- Pending, rejected, or expired access returns HTTP `403`.
+- Collections use Laravel pagination: `data`, `links`, and `meta`.
 
-## Complete Endpoint Inventory
+## Complete endpoint list
 
 ### Public authentication
 
@@ -42,9 +40,9 @@ GET /catalog/courses
 GET /catalog/courses/{course}
 ```
 
-### Authenticated account endpoints
+### Authenticated account routes
 
-These routes are available while the account is pending, approved, or rejected:
+Available to pending, approved, and rejected users:
 
 ```text
 POST  /auth/logout
@@ -55,7 +53,7 @@ PATCH /me
 POST  /me/avatar
 ```
 
-### Approved student endpoints
+### Approved student routes
 
 ```text
 GET   /me/learning-summary
@@ -71,7 +69,7 @@ GET   /me/notification-preferences
 PATCH /me/notification-preferences
 ```
 
-### Administrator approval endpoints
+### Admin account-review routes
 
 ```text
 GET   /admin/users/pending
@@ -79,16 +77,16 @@ PATCH /admin/users/{user}/approve
 PATCH /admin/users/{user}/reject
 ```
 
-## Account Lifecycle
+## Account lifecycle
 
 ```text
-register
-  -> verify_phone
-  -> pending admin approval
+registration
+  -> OTP verification
+  -> pending admin review
   -> approved OR rejected
 ```
 
-Account states:
+Account statuses:
 
 ```text
 pending
@@ -96,37 +94,13 @@ approved
 rejected
 ```
 
-After OTP verification, the API returns a Sanctum token even when the user is pending. This lets Flutter show the pending/rejected account screen and refresh `GET /me/account-status`.
+After OTP verification, the API returns a token while the user remains pending. Flutter uses the token to check `/me/account-status` but cannot access approved-only routes.
 
-Pending and rejected users cannot use learning, QR activation, lesson progress, or notification endpoints.
-
-A blocked request returns:
+## User response
 
 ```json
 {
-  "message": "Your account is pending administrator approval.",
-  "accountStatus": "pending",
-  "rejectionReason": null
-}
-```
-
-Rejected example:
-
-```json
-{
-  "message": "Your account was rejected by the administrator.",
-  "accountStatus": "rejected",
-  "rejectionReason": "Telegram account could not be verified."
-}
-```
-
-## User Object
-
-Every authentication, profile, and approval response uses these user properties:
-
-```json
-{
-  "id": 1,
+  "id": 10,
   "name": "EduFlow Student",
   "email": null,
   "phone": "+963999999999",
@@ -151,35 +125,11 @@ Every authentication, profile, and approval response uses these user properties:
 }
 ```
 
-Telegram usernames are stored without the leading `@`.
-
-## Demo Data
-
-After running:
-
-```bash
-php artisan migrate:fresh --seed
-```
-
-Use:
-
-```text
-Approved student phone: +963999999999
-Approved student Telegram: eduflow_student
-Approved student password: password123
-
-Admin phone: +963988888888
-Admin Telegram: eduflow_admin
-Admin password: password123
-
-Demo QR/enrollment code: EDUFLOW-DEMO-2026
-```
+Telegram usernames are normalized to lowercase and stored without `@`.
 
 ## Authentication
 
 ### POST `/auth/register`
-
-Creates an unverified account with `accountStatus: pending` and generates a six-digit OTP.
 
 Request:
 
@@ -187,7 +137,7 @@ Request:
 {
   "fullName": "EduFlow Student",
   "phone": "+963999999999",
-  "telegramUsername": "@eduflow_student",
+  "telegramUsername": "@EduFlow_Student",
   "password": "password123",
   "locale": "ar",
   "timezone": "Asia/Damascus"
@@ -201,14 +151,15 @@ full_name -> fullName
 telegram_username -> telegramUsername
 ```
 
-Telegram validation:
+Telegram username rules:
 
 ```text
 required
+unique
 3-64 characters
-letters, numbers, and underscores only
-unique between users
-leading @ is removed automatically
+letters, numbers, underscores
+normalized to lowercase
+leading @ removed
 ```
 
 Response: HTTP `201`
@@ -216,12 +167,10 @@ Response: HTTP `201`
 ```json
 {
   "user": {
-    "id": 1,
-    "name": "EduFlow Student",
     "phone": "+963999999999",
     "telegramUsername": "eduflow_student",
-    "phoneVerifiedAt": null,
-    "accountStatus": "pending"
+    "accountStatus": "pending",
+    "phoneVerifiedAt": null
   },
   "message": "Verification code sent successfully.",
   "nextAction": "verify_phone",
@@ -230,11 +179,9 @@ Response: HTTP `201`
 }
 ```
 
-`debugOtp` is returned only in `local` and `testing` environments. Connect an SMS gateway before production launch.
+`debugOtp` is returned only in `local` and `testing`. Production must connect an SMS provider.
 
 ### POST `/auth/verify-otp`
-
-Request:
 
 ```json
 {
@@ -244,13 +191,13 @@ Request:
 }
 ```
 
-Pending-account response:
+Response:
 
 ```json
 {
   "user": {
     "accountStatus": "pending",
-    "rejectionReason": null
+    "phoneVerifiedAt": "2026-07-24T12:00:00.000000Z"
   },
   "token": "1|sanctum-token",
   "message": "Phone verified. Your account is pending administrator approval.",
@@ -258,11 +205,11 @@ Pending-account response:
 }
 ```
 
-Flutter must save the token and open the pending approval screen rather than the main learning screen.
+Flutter saves the token and opens the pending approval screen.
 
 ### POST `/auth/resend-otp`
 
-Rate limited to three requests per minute.
+Rate limit: three requests per minute.
 
 ```json
 {
@@ -270,18 +217,16 @@ Rate limited to three requests per minute.
 }
 ```
 
-Response includes:
+Response fields:
 
 ```text
 message
 nextAction = verify_phone
 verificationExpiresAt
-debugOtp in local/testing only
+debugOtp in local/testing
 ```
 
 ### POST `/auth/login`
-
-Request:
 
 ```json
 {
@@ -291,30 +236,24 @@ Request:
 }
 ```
 
-The response always includes `user`, `token`, `message`, and `nextAction` for verified active users.
-
-Possible `nextAction` values:
+Response fields:
 
 ```text
-open_app              account approved
-await_admin_approval  account pending
-show_rejection        account rejected
+user
+token
+message
+nextAction
 ```
 
-Pending example:
+`nextAction` values:
 
-```json
-{
-  "user": {
-    "accountStatus": "pending"
-  },
-  "token": "1|sanctum-token",
-  "message": "Your account is pending administrator approval.",
-  "nextAction": "await_admin_approval"
-}
+```text
+open_app              approved account
+await_admin_approval  pending account
+show_rejection        rejected account
 ```
 
-Rejected example:
+Rejected response example:
 
 ```json
 {
@@ -328,40 +267,42 @@ Rejected example:
 }
 ```
 
+Unverified or inactive accounts cannot log in.
+
 ### POST `/auth/logout`
 
 Revokes the current token.
 
 ### POST `/auth/logout-all`
 
-Revokes all user tokens.
+Revokes all tokens belonging to the user.
 
-## Profile and Account Status
+## Profile and approval status
 
 ### GET `/me`
 
-Returns the authenticated user object.
+Returns the authenticated user resource.
 
 ### GET `/me/account-status`
 
-Returns the same user resource and is intended for pending/rejected-screen refreshes.
+Returns the authenticated user resource and is used by splash/pending/rejection screens.
 
-Flutter behavior:
+Flutter routing:
 
 ```text
-pending  -> keep pending screen
-approved -> navigate to main application
-rejected -> show rejectionReason
+accountStatus = approved -> main screen
+accountStatus = pending  -> pending screen
+accountStatus = rejected -> rejection screen using rejectionReason
+HTTP 401                 -> clear token and login
 ```
 
 ### PATCH `/me`
 
-Request properties:
+Editable fields:
 
 ```json
 {
   "fullName": "Updated Student",
-  "phone": "+963944444444",
   "telegramUsername": "@updated_student",
   "bio": "Learning with EduFlow",
   "locale": "ar",
@@ -369,13 +310,9 @@ Request properties:
 }
 ```
 
-Accepted aliases:
-
-```text
-full_name -> fullName
-name -> name
-telegram_username -> telegramUsername
-```
+- Phone is not editable through this endpoint.
+- Changing Telegram username resets a non-admin account to `pending` and clears the previous review/rejection data.
+- The updated account must be reviewed again by an admin.
 
 ### POST `/me/avatar`
 
@@ -385,9 +322,33 @@ Multipart form-data:
 avatar: <image>
 ```
 
-## Administrator Account Review
+## Approval middleware response
 
-All routes require a Sanctum token belonging to a user with `isAdmin: true`.
+Pending user accessing an approved-only route:
+
+```json
+{
+  "message": "Your account is pending administrator approval.",
+  "accountStatus": "pending",
+  "rejectionReason": null
+}
+```
+
+Rejected user:
+
+```json
+{
+  "message": "Your account was rejected by the administrator.",
+  "accountStatus": "rejected",
+  "rejectionReason": "Telegram account could not be verified."
+}
+```
+
+Flutter must redirect based on `accountStatus` when receiving this HTTP `403` response.
+
+## Admin approval API
+
+These routes require an authenticated user with `isAdmin: true`.
 
 ### GET `/admin/users/pending`
 
@@ -398,15 +359,19 @@ perPage
 search
 ```
 
-`search` matches name, phone, or Telegram username.
+`search` checks:
 
-Response is a paginated collection of pending user resources.
+```text
+name
+phone
+telegramUsername
+```
+
+Returns a paginated list of pending non-admin users.
 
 ### PATCH `/admin/users/{user}/approve`
 
-No request body is required.
-
-Response:
+No body is required.
 
 ```json
 {
@@ -424,15 +389,17 @@ Response:
 
 ### PATCH `/admin/users/{user}/reject`
 
-Request:
-
 ```json
 {
   "rejectionReason": "Telegram account could not be verified."
 }
 ```
 
-`rejection_reason` is accepted as an alias.
+Alias:
+
+```text
+rejection_reason -> rejectionReason
+```
 
 Response:
 
@@ -448,33 +415,17 @@ Response:
 }
 ```
 
-## Profile Learning Summary
+Only pending non-admin accounts can be approved or rejected.
 
-### GET `/me/learning-summary`
+## Public catalog
 
-Requires an approved account.
-
-```json
-{
-  "data": {
-    "coursesCount": 3,
-    "activeCoursesCount": 2,
-    "completedCoursesCount": 1,
-    "completedLessonsCount": 18,
-    "learningMinutes": 720
-  }
-}
-```
-
-## Public Catalog
-
-Public catalog endpoints return metadata only. They never return paid lesson media or assessment answers.
+Public catalog endpoints return metadata only. Paid media and assessment answers are never exposed publicly.
 
 ### GET `/catalog/categories`
 
 Returns the active category tree.
 
-Category properties:
+Category fields:
 
 ```text
 id
@@ -503,17 +454,35 @@ filter[level]
 sort
 ```
 
-Course list properties include `coverUrl` and `introVideoUrl` when media exists.
+Course list data includes `coverUrl` and `introVideoUrl` when available.
 
 ### GET `/catalog/courses/{course}`
 
-Returns safe public metadata. Modules, paid lessons, media URLs, and assessment answers are not loaded.
+Returns public course metadata only. Modules, paid lessons, media URLs, and assessment answers are excluded.
 
-## Course Activation
+## Learning summary
+
+### GET `/me/learning-summary`
+
+Requires approved account.
+
+```json
+{
+  "data": {
+    "coursesCount": 3,
+    "activeCoursesCount": 2,
+    "completedCoursesCount": 1,
+    "completedLessonsCount": 18,
+    "learningMinutes": 720
+  }
+}
+```
+
+## QR course activation
 
 ### POST `/enrollment-codes/redeem`
 
-Requires an approved account and is rate limited.
+Requires approved account. Rate limit: ten requests per minute.
 
 ```json
 {
@@ -539,23 +508,28 @@ Response:
 }
 ```
 
-Redemption is transactional and idempotent for the same user/code combination.
+Redemption is transactional and idempotent for the same user/code.
 
-## My Courses
+## My courses
 
 ### GET `/me/enrollments`
 
 Returns paginated enrollments ordered by recent access.
 
-Enrollment status is returned as `expired` when `expiresAt` is in the past.
+Expired enrollments return:
+
+```text
+status = expired
+isExpired = true
+```
 
 ### GET `/me/enrollments/{enrollment}`
 
-Returns only an enrollment owned by the authenticated user.
+Returns an enrollment only when it belongs to the authenticated user.
 
 ### GET `/me/courses/{course}`
 
-Returns the personalized course-learning payload used by Flutter course details, downloads, and the video player.
+Returns the personalized course payload needed by course details, video playback, files, and progress screens.
 
 ```json
 {
@@ -606,13 +580,18 @@ Returns the personalized course-learning payload used by Flutter course details,
 }
 ```
 
-Returns `404` when no enrollment exists and `403` when course access has expired.
+Returns:
 
-## Lesson Progress
+```text
+404 when the user is not enrolled
+403 when the enrollment is expired
+```
+
+## Lesson progress
 
 ### PATCH `/lessons/{lesson}/progress`
 
-Requires an approved account with an active, non-expired course enrollment.
+Requires an approved account and active course enrollment.
 
 ```json
 {
@@ -629,16 +608,16 @@ in_progress
 completed
 ```
 
-Behavior:
+Rules:
 
-- Playback position is clamped between zero and lesson duration.
-- Reaching lesson duration marks the lesson completed.
-- Enrollment progress and last-accessed time are synchronized.
-- There is no separate lesson-complete endpoint; send `status: completed` here.
+- Progress is clamped between zero and lesson duration.
+- Reaching lesson duration marks it completed.
+- Enrollment progress and last-accessed time are recalculated.
+- There is no separate complete endpoint; use `status: completed`.
 
 ## Notifications
 
-All notification routes require an approved account.
+All notification endpoints require an approved account.
 
 ### GET `/notifications`
 
@@ -646,7 +625,7 @@ Returns paginated notifications owned by the authenticated user.
 
 ### PATCH `/notifications/{notification}/read`
 
-Returns the notification in a `data` wrapper.
+Marks one owned notification as read and returns it inside `data`.
 
 ### PATCH `/notifications/read-all`
 
@@ -654,18 +633,18 @@ Marks all authenticated-user notifications as read.
 
 ### GET `/me/notification-preferences`
 
-Returns the current user notification preferences.
+Returns notification preferences.
 
 ### PATCH `/me/notification-preferences`
 
-Updates the current user notification preferences.
+Updates notification preferences.
 
-## Flutter Navigation Rules
+## Flutter navigation requirements
 
 After registration:
 
 ```text
-register success -> OTP screen
+nextAction = verify_phone -> OTP screen
 ```
 
 After OTP verification or login:
@@ -673,7 +652,7 @@ After OTP verification or login:
 ```text
 nextAction = open_app              -> main screen
 nextAction = await_admin_approval  -> pending approval screen
-nextAction = show_rejection        -> rejection screen with rejectionReason
+nextAction = show_rejection        -> rejection screen
 ```
 
 During splash:
@@ -683,25 +662,45 @@ stored token -> GET /me/account-status
 approved     -> main screen
 pending      -> pending screen
 rejected     -> rejection screen
-401          -> clear token and login screen
+401          -> clear token and login
 ```
 
-On any approved-only endpoint returning `403`:
+On approved-only HTTP `403`:
 
 ```text
-accountStatus = pending  -> pending screen
-accountStatus = rejected -> rejection screen
+pending  -> pending screen
+rejected -> rejection screen with rejectionReason
 ```
 
-## Removed Mobile Routes
+## Demo accounts
 
-The following groups are deliberately absent from the Flutter mobile API:
+After:
+
+```bash
+php artisan migrate:fresh --seed
+```
+
+```text
+Approved student phone: +963999999999
+Approved student Telegram: eduflow_student
+Approved student password: password123
+
+Admin phone: +963988888888
+Admin Telegram: eduflow_admin
+Admin password: password123
+
+Demo QR code: EDUFLOW-DEMO-2026
+```
+
+## Deliberately removed mobile routes
+
+The Flutter API does not expose:
 
 - Course/category/module/lesson management CRUD
 - Course and lesson media-management routes
-- Assessment authoring, question management, attempts, results, and grading
+- Assessment authoring, question management, attempts, results, or grading
 - Notification-template CRUD
-- Learning/reporting/export routes
-- Direct unaudited course-enrollment routes
+- Reports and exports
+- Direct unaudited enrollment routes
 
-Administrative content management should remain separate from the student mobile API.
+These belong in a separate administrative content-management surface.
