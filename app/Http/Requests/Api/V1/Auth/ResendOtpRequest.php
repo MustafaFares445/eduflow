@@ -13,6 +13,13 @@ final class ResendOtpRequest extends FormRequest
         return true;
     }
 
+    protected function prepareForValidation(): void
+    {
+        $this->merge([
+            'phone' => preg_replace('/\s+/', '', trim((string) $this->input('phone'))),
+        ]);
+    }
+
     public function rules(): array
     {
         return [
