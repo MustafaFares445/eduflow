@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\V1\Admin\UserApprovalController;
 use App\Http\Controllers\Api\V1\Auth\AuthController;
 use App\Http\Controllers\Api\V1\Auth\ProfileController;
 use App\Http\Controllers\Api\V1\Catalog\CatalogController;
@@ -26,21 +27,31 @@ Route::prefix('v1')->group(function (): void {
         Route::post('auth/logout-all', [AuthController::class, 'logoutAll']);
 
         Route::get('me', [ProfileController::class, 'show']);
+        Route::get('me/account-status', [ProfileController::class, 'show']);
         Route::patch('me', [ProfileController::class, 'update']);
         Route::post('me/avatar', [ProfileController::class, 'avatar']);
-        Route::get('me/learning-summary', [StudentLearningController::class, 'summary']);
 
-        Route::get('me/enrollments', [EnrollmentController::class, 'mine']);
-        Route::get('me/enrollments/{enrollment}', [EnrollmentController::class, 'showMine']);
-        Route::get('me/courses/{course}', [StudentLearningController::class, 'course']);
-        Route::post('enrollment-codes/redeem', [EnrollmentCodeController::class, 'redeem'])->middleware('throttle:10,1');
+        Route::prefix('admin')->middleware('admin')->group(function (): void {
+            Route::get('users/pending', [UserApprovalController::class, 'pending']);
+            Route::patch('users/{user}/approve', [UserApprovalController::class, 'approve']);
+            Route::patch('users/{user}/reject', [UserApprovalController::class, 'reject']);
+        });
 
-        Route::patch('lessons/{lesson}/progress', [LessonProgressController::class, 'update']);
+        Route::middleware('account.approved')->group(function (): void {
+            Route::get('me/learning-summary', [StudentLearningController::class, 'summary']);
 
-        Route::get('notifications', [NotificationController::class, 'index']);
-        Route::patch('notifications/{notification}/read', [NotificationController::class, 'read']);
-        Route::patch('notifications/read-all', [NotificationController::class, 'readAll']);
-        Route::get('me/notification-preferences', [NotificationPreferenceController::class, 'show']);
-        Route::patch('me/notification-preferences', [NotificationPreferenceController::class, 'update']);
+            Route::get('me/enrollments', [EnrollmentController::class, 'mine']);
+            Route::get('me/enrollments/{enrollment}', [EnrollmentController::class, 'showMine']);
+            Route::get('me/courses/{course}', [StudentLearningController::class, 'course']);
+            Route::post('enrollment-codes/redeem', [EnrollmentCodeController::class, 'redeem'])->middleware('throttle:10,1');
+
+            Route::patch('lessons/{lesson}/progress', [LessonProgressController::class, 'update']);
+
+            Route::get('notifications', [NotificationController::class, 'index']);
+            Route::patch('notifications/{notification}/read', [NotificationController::class, 'read']);
+            Route::patch('notifications/read-all', [NotificationController::class, 'readAll']);
+            Route::get('me/notification-preferences', [NotificationPreferenceController::class, 'show']);
+            Route::patch('me/notification-preferences', [NotificationPreferenceController::class, 'update']);
+        });
     });
 });
