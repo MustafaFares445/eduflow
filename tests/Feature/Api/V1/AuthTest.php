@@ -10,10 +10,11 @@ use Laravel\Sanctum\Sanctum;
 
 uses(RefreshDatabase::class);
 
-it('registers by phone, verifies otp, logs in, and updates the profile', function (): void {
+it('registers with Telegram, verifies OTP, and remains pending for admin approval', function (): void {
     $register = $this->postJson('/api/v1/auth/register', [
         'full_name' => 'EduFlow Student',
         'phone' => '+963999999999',
+        'telegram_username' => '@eduflow_student',
         'password' => 'password123',
         'locale' => 'ar',
         'timezone' => 'Asia/Damascus',
@@ -22,7 +23,10 @@ it('registers by phone, verifies otp, logs in, and updates the profile', functio
     $register->assertCreated()
         ->assertJsonPath('user.name', 'EduFlow Student')
         ->assertJsonPath('user.phone', '+963999999999')
-        ->assertJsonStructure(['user', 'message', 'verificationExpiresAt', 'debugOtp']);
+        ->assertJsonPath('user.telegramUsername', 'eduflow_student')
+        ->assertJsonPath('user.accountStatus', 'pending')
+        ->assertJsonPath('nextAction', 'verify_phone')
+        ->assertJsonStructure(['user', 'message', 'nextAction', 'verificationExpiresAt', 'debugOtp']);
 
     $otp = $register->json('debugOtp');
 
@@ -34,29 +38,38 @@ it('registers by phone, verifies otp, logs in, and updates the profile', functio
 
     $verify->assertOk()
         ->assertJsonPath('user.phone', '+963999999999')
-        ->assertJsonStructure(['user', 'token', 'message']);
+        ->assertJsonPath('user.accountStatus', 'pending')
+        ->assertJsonPath('nextAction', 'await_admin_approval')
+        ->assertJsonStructure(['user', 'token', 'message', 'nextAction']);
 
     $token = $verify->json('token');
 
     $this->withToken($token)
-        ->getJson('/api/v1/me')
+        ->getJson('/api/v1/me/account-status')
         ->assertOk()
-        ->assertJsonPath('data.phone', '+963999999999');
+        ->assertJsonPath('data.accountStatus', 'pending');
+
+    $this->withToken($token)
+        ->getJson('/api/v1/me/learning-summary')
+        ->assertForbidden()
+        ->assertJsonPath('accountStatus', 'pending');
 
     $this->withToken($token)
         ->patchJson('/api/v1/me', [
             'fullName' => 'Updated Student',
+            'telegramUsername' => '@updated_student',
             'bio' => 'Learning with EduFlow',
-            'locale' => 'ar',
         ])
         ->assertOk()
         ->assertJsonPath('data.name', 'Updated Student')
-        ->assertJsonPath('data.bio', 'Learning with EduFlow');
+        ->assertJsonPath('data.telegramUsername', 'updated_student');
 
     $this->postJson('/api/v1/auth/login', [
         'phone' => '+963999999999',
         'password' => 'password123',
-    ])->assertOk()->assertJsonStructure(['user', 'token', 'message']);
+    ])->assertOk()
+        ->assertJsonPath('user.accountStatus', 'pending')
+        ->assertJsonPath('nextAction', 'await_admin_approval');
 });
 
 it('does not allow login before phone verification', function (): void {
