@@ -29,9 +29,9 @@ final class EnrollmentCodeController extends Controller
                 ->lockForUpdate()
                 ->first();
 
-            if (! $code || ! $code->isRedeemable()) {
+            if (! $code) {
                 throw ValidationException::withMessages([
-                    'code' => __('The enrollment code is invalid, expired, or already used.'),
+                    'code' => __('The enrollment code is invalid.'),
                 ]);
             }
 
@@ -44,6 +44,12 @@ final class EnrollmentCodeController extends Controller
                 return Enrollment::query()
                     ->with(['user', 'course.category', 'course.media'])
                     ->findOrFail($existingRedemption->enrollment_id);
+            }
+
+            if (! $code->isRedeemable()) {
+                throw ValidationException::withMessages([
+                    'code' => __('The enrollment code is expired or already used.'),
+                ]);
             }
 
             $enrollment = $enrollmentService->activate($user, $code->course, $code->access_days);
