@@ -12,23 +12,23 @@ use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Validation\ValidationException;
 
 final class UserApprovalController extends Controller
 {
     public function pending(Request $request): AnonymousResourceCollection
     {
+        $search = trim((string) $request->query('search', ''));
+
         $users = User::query()
             ->where('account_status', AccountStatus::Pending->value)
-            ->when(
-                $request->filled('search'),
-                fn ($query) => $query->where(function ($nested) use ($request): void {
-                    $search = trim((string) $request->string('search'));
-                    $nested
-                        ->where('name', 'like', "%{$search}%")
-                        ->orWhere('phone', 'like', "%{$search}%")
-                        ->orWhere('telegram_username', 'like', "%{$search}%");
-                })
-            )
+            ->where('is_admin', false)
+            ->when($search !== '', fn ($query) => $query->where(function ($nested) use ($search): void {
+                $nested
+                    ->where('name', 'like', "%{$search}%")
+                    ->orWhere('phone', 'like', "%{$search}%")
+                    ->orWhere('telegram_username', 'like', "%{$search}%");
+            }))
             ->latest()
             ->paginate($request->integer('perPage', 20))
             ->withQueryString();
@@ -38,6 +38,8 @@ final class UserApprovalController extends Controller
 
     public function approve(Request $request, User $user): JsonResponse
     {
+        $this->ensureReviewable($request->user(), $user);
+
         $user->forceFill([
             'account_status' => AccountStatus::Approved,
             'rejection_reason' => null,
@@ -53,6 +55,8 @@ final class UserApprovalController extends Controller
 
     public function reject(RejectUserAccountRequest $request, User $user): JsonResponse
     {
+        $this->ensureReviewable($request->user(), $user);
+
         $user->forceFill([
             'account_status' => AccountStatus::Rejected,
             'rejection_reason' => $request->validated('rejectionReason'),
@@ -64,5 +68,16 @@ final class UserApprovalController extends Controller
             'data' => UserResource::make($user->fresh(['media'])),
             'message' => __('User account rejected successfully.'),
         ]);
+    }
+
+    private function ensureReviewable(User $admin, User $user): void
+    {
+        $status = $user->account_status?->value ?? $user->account_status;
+
+        if ($user->id === $admin->id || $user->is_admin || $status !== AccountStatus::Pending->value) {
+            throw ValidationException::withMessages([
+                'user' => __('Only pending non-admin user accounts can be reviewed.'),
+            ]);
+        }
     }
 }
